@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a63c9"/><stop offset="1" stop-color="#0f2a5e"/></linearGradient></defs>
+<rect width="512" height="512" fill="url(#bg)"/>
+<path d="M150 330 A118 118 0 1 1 330 345" fill="none" stroke="#ffc61a" stroke-width="22" stroke-linecap="round"/>
+<polygon points="300,372 356,330 302,322" fill="#ffc61a"/>
+<g transform="translate(256 248) rotate(-110) scale(170) translate(-0.18 0.12)"><polyline points="0.214,-0.507 0.371,-0.251 0.343,0.028" fill="none" stroke="#c98e6a" stroke-width="0.1" stroke-linecap="round" stroke-linejoin="round"/><polyline points="0.000,0.000 0.421,-0.158 0.202,0.235" fill="none" stroke="#c98e6a" stroke-width="0.13" stroke-linecap="round" stroke-linejoin="round"/><polyline points="0.000,0.000 0.169,-0.063" fill="none" stroke="#a81c22" stroke-width="0.16" stroke-linecap="round" stroke-linejoin="round"/><polyline points="0.236,0.173 0.187,0.261" fill="none" stroke="#d9dde2" stroke-width="0.12" stroke-linecap="round" stroke-linejoin="round"/><g transform="translate(0 0.02) rotate(-67.87)">
+<clipPath id="t"><path d="M-0.02 -0.155 L0.528 -0.147 Q0.628 0 0.528 0.147 L-0.02 0.155 Z"/></clipPath>
+<path d="M-0.02 -0.155 L0.528 -0.147 Q0.628 0 0.528 0.147 L-0.02 0.155 Z" fill="#f7f7f9"/>
+<g clip-path="url(#t)"><polygon points="0.028,-0.170 0.171,-0.170 0.352,0.020 0.227,0.000" fill="rgba(120,110,200,.55)"/><polygon points="0.171,-0.170 0.352,-0.170 0.557,0.060 0.409,0.020" fill="#3b3fa0"/><polygon points="0.313,-0.170 0.398,-0.170 0.597,0.040 0.523,0.060" fill="#d8262e"/><polygon points="0.375,-0.170 0.455,-0.170 0.597,-0.020 0.568,0.030" fill="#6d5bbd"/></g>
+<path d="M0.518 -0.140 Q0.618 0 0.518 0.140" fill="none" stroke="#d8262e" stroke-width="0.028"/></g><polyline points="0.000,-0.010 0.021,-0.051" fill="none" stroke="#d8262e" stroke-width="0.29" stroke-linecap="round" stroke-linejoin="round"/><polyline points="0.000,0.000 0.439,-0.098 0.243,0.307" fill="none" stroke="#e8b08a" stroke-width="0.135" stroke-linecap="round" stroke-linejoin="round"/><polyline points="0.000,0.000 0.184,-0.041" fill="none" stroke="#d8262e" stroke-width="0.17" stroke-linecap="round" stroke-linejoin="round"/><polyline points="0.274,0.244 0.230,0.334" fill="none" stroke="#ffffff" stroke-width="0.12" stroke-linecap="round" stroke-linejoin="round"/><circle cx="0.280" cy="-0.663" r="0.125" fill="#2b1d14"/><circle cx="0.309" cy="-0.640" r="0.1" fill="#e8b08a"/><circle cx="0.362" cy="-0.650" r="0.016" fill="#222"/><polyline points="0.214,-0.507 0.429,-0.298 0.471,-0.021" fill="none" stroke="#e8b08a" stroke-width="0.1" stroke-linecap="round" stroke-linejoin="round"/></g>
+<rect x="86" y="410" width="340" height="24" rx="6" fill="#3478dc"/>
+<rect x="116" y="414" width="280" height="12" fill="#eef1f3"/>
+<rect x="236" y="417" width="40" height="5" fill="#d83a3a"/>
+<rect x="86" y="432" width="340" height="12" fill="#1c4fa6"/>
+<path d="M110 444 L 140 490 L 170 444 M342 444 L 372 490 L 402 444" fill="none" stroke="#c3cad0" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

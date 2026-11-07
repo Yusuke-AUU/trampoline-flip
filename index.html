@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>TRAMPOLINE FLIP（v0.8.3）</title>
+<meta name="description" content="長押しだけで宙返り。前後交互に10本の演技を決めて、最後はビタ止め。競技用トランポリンのブラウザゲーム。">
+<meta name="theme-color" content="#0f2a5e">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="FLIP">
+<!-- SNS共有用（公開後、og:image と og:url を https:// から始まる公開URLに書き換えてください） -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="TRAMPOLINE FLIP">
+<meta property="og:description" content="長押しだけで宙返り。10本の演技をビタ止めで決めろ！">
+<meta property="og:image" content="og-image.png">
+<meta property="og:url" content="">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#e9dfc6;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+canvas{display:block;width:100vw;height:100vh;height:100dvh;touch-action:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(() => {
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const FONT = '"Hiragino Sans","Hiragino Kaku Gothic ProN","Meiryo",sans-serif';
+let W, H, DPR, S, bedY, cx;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  S = Math.min(H / 10.8, W / 6.0);       // px per meter
+  bedY = H - 2.0 * S;                      // screen y of bed (world y=0) when camera at 0
+  cx = W / 2;
+}
+addEventListener('resize', resize); resize();
+
+// ---- 定数 ----
+const G = 11;          // 重力 m/s^2
+const TW = 10.5;       // 抱え込み時の回転速度 rad/s
+const MAXH = 6.5;      // 最高到達（m）
+const CT = 0.26;       // 接地時間 s
+const GROUND = -1.15;  // 床の高さ（競技用トランポリンの高さ 約1.15m）
+const TAU = Math.PI * 2;
+const na = a => a - TAU * Math.round(a / TAU);
+
+// ---- 状態 ----
+let st = 'title', p, holding = false, time = 0;
+let score = 0, best = 0, jumps = 0, totalFlips = 0, combo = 0, maxCombo = 0;
+let pops = [], camY = 0, bedDepth = 0, crashT = 0, overT = 0, newBest = false;
+let el = [], endReason = '', lastDir = 0;
+const SHAPES = ['L', 'P', 'T'];   // 伸身 → 屈身 → 抱え込み の順に自動で変わる
+const SHAPE_JA = {L: '伸身', P: '屈身', T: '抱え込み'};
+let dirCount = {1: 0, '-1': 0};   // 方向ごとに決めた宙返りの本数   // lastDir: 直前の技の方向（+1前/-1後）   // 演技（10本）の記録
+try { best = +localStorage.getItem('tflip_best10') || 0; } catch (e) {}
+
+// ---- サウンド ----
+let AC = null, muted = false, whoosh = null;
+try { muted = localStorage.getItem('tflip_mute') === '1'; } catch (e) {}
+function initAudio() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    const len = AC.sampleRate, buf = AC.createBuffer(1, len, AC.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = AC.createBufferSource(); src.buffer = buf; src.loop = true;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = 0.9;
+    const g = AC.createGain(); g.gain.value = 0;
+    src.connect(bp); bp.connect(g); g.connect(AC.destination); src.start();
+    whoosh = {g, bp};
+  } catch (e) { AC = null; }
+}
+function tone(f0, f1, dur, type = 'sine', vol = 0.25, delay = 0) {
+  if (!AC || muted) return;
+  const t = AC.currentTime + delay, o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+const sfx = {
+  bounce: v => tone(150 + v * 5, 70, 0.22, 'sine', 0.35),
+  good: () => { tone(660, 660, 0.12, 'triangle', 0.14); tone(880, 880, 0.16, 'triangle', 0.14, 0.08); },
+  perfect: () => [660, 880, 1320].forEach((f, i) => tone(f, f, 0.2, 'triangle', 0.14, i * 0.07)),
+  drop: () => tone(120, 55, 0.32, 'sine', 0.45),
+  twist: () => tone(500, 1100, 0.18, 'triangle', 0.06),
+  fail: () => { tone(220, 45, 0.55, 'sawtooth', 0.12); tone(90, 40, 0.4, 'sine', 0.4, 0.05); },
+};
+
+const clouds = Array.from({length: 5}, (_, i) => ({x: Math.random(), y: 0.08 + Math.random() * 0.35, s: 0.6 + Math.random() * 0.8, v: 0.004 + Math.random() * 0.006}));
+
+function resetPlayer() {
+  p = {x: 0, vx: 0, y: 0.9, vy: 0, th: 0, w: 0, tuck: 0, crouch: 0, contact: true, contactT: 0, D: 0.3,
+       airT: 0, dir: 0, lean: 0, leanK: 1, leanPh: 0, bounceN: 0, apex: 0, flail: 0, drop: 0, recover: false, face: 1, twist: -1, twisted: false, final: false, finalJump: false, stick: false, stickT: 0};
+}
+function startGame() {
+  st = 'play'; score = 0; jumps = 0; totalFlips = 0; combo = 0; maxCombo = 0; pops = []; newBest = false; el = []; endReason = ''; lastDir = 0; dirCount = {1: 0, '-1': 0};
+  resetPlayer();
+}
+resetPlayer();
+
+// ---- 姿勢 ----
+const dirv = (a, l) => [Math.sin(a) * l, Math.cos(a) * l]; // a=0 下, π 上, 正=前方
+const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const P_L = {to: Math.PI, ua: Math.PI - 0.15, fa: Math.PI - 0.1, th: 0, sh: 0};
+const P_T = {to: Math.PI - 0.4, ua: 0.8, fa: 0.15, th: 1.79, sh: -0.45};          // 抱え込み
+const P_P = {to: 0.78, ua: -0.55, fa: -0.85, th: 0.1, sh: 0.1};                 // 屈身（脚を伸ばしたまま上体を脚に折りたたむ）
+const P_S = {to: Math.PI, ua: 0.12, fa: 0.06, th: -0.06, sh: -0.03};             // 伸身（まっすぐ、腕は体側）
+const SHAPE_POSE = {T: P_T, P: P_P, L: P_S};
+const nextShape = d => SHAPES[(dirCount[d] || 0) % 3];
+const P_C = {to: Math.PI - 0.3, ua: -0.5, fa: -0.3, th: 0.9, sh: -0.75};
+function pose() {
+  const o = {};
+  const TG = SHAPE_POSE[p.shape] || P_T;
+  for (const k in P_L) o[k] = P_L[k] + (TG[k] - P_L[k]) * p.tuck + (P_C[k] - P_L[k]) * p.crouch;
+  if (p.flail > 0.01) {
+    const f = p.flail, t = time;
+    o.ua += f * 1.6 * Math.sin(t * 13); o.fa += f * 1.1 * Math.sin(t * 17 + 1);
+    o.th += f * 0.9 * Math.sin(t * 11 + 2); o.sh += f * 0.9 * Math.sin(t * 15);
+    o.to += f * 0.35 * Math.sin(t * 9);
+  }
+  return o;
+}
+function joints(o, off = {}) {
+  const hip = [0, 0];
+  const sh = dirv(o.to, 0.55);
+  const head = dirv(o.to, 0.72);
+  const elbow = add(sh, dirv(o.ua + (off.ua || 0), 0.3));
+  const hand = add(elbow, dirv(o.fa + (off.ua || 0), 0.28));
+  const knee = dirv(o.th + (off.th || 0), 0.45);
+  const foot = add(knee, dirv(o.sh + (off.sh || 0), 0.45));
+  return {hip, sh, head, elbow, hand, knee, foot};
+}
+// 体の傾き（lean）は方向とタイミングの判定・矢印表示にだけ使い、見た目の体は傾けない
+function disp() { return p.th; }
+// 回転の中心：屈身・抱え込みは体の重心まわりに回す（腰まわりだと大きく振れて見えるため）
+function pivot(J) {
+  const w = (p.shape === 'P' || p.shape === 'T' || !p.shape) ? p.tuck : 0;
+  if (w < 0.01) return [0, 0];
+  J = J || joints(pose());
+  const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const parts = [[mid(J.hip, J.sh), 0.45], [J.head, 0.08], [mid(J.hip, J.knee), 0.2], [mid(J.knee, J.foot), 0.12],
+                 [mid(J.sh, J.elbow), 0.08], [mid(J.elbow, J.hand), 0.07]];
+  let x = 0, y = 0; for (const [q, m] of parts) { x += q[0] * m; y += q[1] * m; }
+  return [x * w, y * w];
+}
+function toWorld(l, A, c) {
+  c = c || [0, 0];
+  const co = Math.cos(A), s = Math.sin(A), dx = l[0] - c[0], dy = l[1] - c[1];
+  return [p.x + c[0] + (dx * co - dy * s), p.y - (c[1] + dx * s + dy * co)];
+}
+function lowest() {
+  const j = joints(pose()), A = disp(), pc = pivot(j);
+  let m = Infinity;
+  for (const k of ['hip', 'sh', 'elbow', 'hand', 'knee', 'foot']) m = Math.min(m, toWorld(j[k], A, pc)[1]);
+  m = Math.min(m, toWorld(j.head, A, pc)[1] - 0.12);
+  return m;
+}
+function footY() { return joints(pose()).foot[1]; }
+
+// ---- 入力 ----
+function down() {
+  if (st === 'title') { startGame(); return; }
+  if (st === 'over') { if (overT > 0.6) startGame(); return; }
+  if (st === 'play') holding = true;
+}
+function up() { holding = false; }
+function toggleMute() { muted = !muted; try { localStorage.setItem('tflip_mute', muted ? '1' : '0'); } catch (e) {} }
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault(); initAudio();
+  if (e.clientX < 64 && e.clientY > H - 64) { toggleMute(); return; }
+  down();
+});
+addEventListener('pointerup', up); addEventListener('pointercancel', up);
+cv.addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('keydown', e => { initAudio(); if (e.code === 'KeyM') toggleMute(); if ((e.code === 'Space' || e.code === 'Enter') && !e.repeat) { e.preventDefault(); down(); } });
+addEventListener('keyup', e => { if (e.code === 'Space' || e.code === 'Enter') up(); });
+
+// ---- 更新 ----
+function pop(text, color = '#fff', size = 1, dy = 0) {
+  pops.push({text, color, size, t: 0, x: p.x, y: p.y + 1.4 + dy});
+}
+function fullName(turns, sh) {   // 1回宙返りは姿勢が技名に入る（タック/パイク/レイアウト）
+  sh = sh || 'T';
+  if (Math.abs(turns) === 1) return ({L: 'レイアウト', P: 'パイク', T: 'タック'})[sh] + (turns > 0 ? 'バラニー' : 'バック');
+  return `${flipName(turns)}（${sh}）`;
+}
+function flipName(turns) {
+  const n = Math.abs(turns), f = turns > 0;
+  if (n === 1) return f ? 'タックバラニー' : 'タックバック';
+  if (n === 2) return f ? 'バラニーアウト' : 'ダブルバック';
+  if (n === 3) return f ? 'トリフィスアウト' : 'トリプルバック';
+  return `${n}回宙返り（${f ? '前' : '後'}）`;
+}
+function launch() {
+  p.contact = false; p.crouch = 0; p.w = 0; p.dir = 0; p.airT = 0; p.twisted = false; p.twist = -1; p.shape = null;
+  p.leanPh = Math.random() < 0.5 ? 0 : Math.PI;
+  p.finalJump = p.final;   // 10本目の後は最後のストレートジャンプ
+  p.forceDir = st === 'play' && lastDir ? -lastDir : 0;   // 演技中は前後を交互に固定
+  if (p.drop) {            // 腹落ち・背落ちからの立て直しジャンプ
+    p.drop = 0; p.recover = true; p.leanK = 0; p.bounceN = 0;
+  } else {
+    p.recover = false; p.th = 0; p.leanK = p.finalJump ? 0 : 1; p.y = footY();
+  }
+  p.bounceN++;
+  let h = Math.min(st === 'title' ? 2.4 : MAXH, 1.0 + p.bounceN * 1.3);
+  if (st === 'play' && h >= MAXH) h -= Math.random() * 0.8;   // 最高点付近は毎回少し高さが変わる
+  if (p.finalJump && !p.recover) h = 2.4;
+  p.vy = Math.sqrt(2 * G * h); p.apex = 0;
+  if (st === 'play') jumps++;
+}
+function addElement(name, pts, color) {
+  el.push({name, pts}); score += pts;
+  pop(`${el.length}/10`, '#ffffff', 0.8, 1.5);
+  if (el.length === 10) {
+    p.final = true;
+    pop('10本完了！最後はストップ', '#ffd23f', 0.8, -1.0);
+  }
+}
+function touchdown() {
+  const d = disp(), a = na(d);
+  const turns = Math.round((d - a) / TAU), aa = Math.abs(a);
+  if (p.dir > 0 && !p.twisted && turns > 0) finishTwist();
+  else if (p.twist >= 0) finishTwist();
+  sfx.bounce(Math.abs(p.vy));
+  if (st !== 'play') { normalContact(a); return; }
+  if (aa < 0.75) {
+    const n = Math.abs(turns);
+    if (p.finalJump) { startStick(a, '演技終了'); return; }
+    if (n > 0) {
+      totalFlips += n;
+      const base = [0, 100, 300, 700, 1500][Math.min(n, 4)] + Math.max(0, n - 4) * 1000;
+      // 着地の綺麗さで倍率
+      const grade = aa < 0.12 ? ['PERFECT!', 1.5, '#ff7ab8'] : aa < 0.35 ? ['GOOD', 1.0, '#b6ff6a'] : ['着地乱れ', 0.6, '#ffb36b'];
+      const pts = Math.round(base * (turns > 0 ? 1.1 : 1) * grade[1] + p.apex * 10);
+      pop(fullName(turns, p.shape), turns > 0 ? '#ffd23f' : '#7fe0ff', 1.1, 0.5);
+      pop('+' + pts, '#fff', 1.0, 0);
+      pop(grade[0], grade[2], 0.9, -0.5);
+      aa < 0.12 ? sfx.perfect() : sfx.good();
+      lastDir = Math.sign(turns);
+      const sh = p.shape || 'T';
+      dirCount[Math.sign(turns)] = (dirCount[Math.sign(turns)] || 0) + 1;
+      addElement(fullName(turns, sh), pts);
+    } else if (el.length > 0 && !p.recover) {   // 演技中のストレートジャンプ＝中断
+      startStick(a, '中断'); return;
+    }
+    normalContact(a);
+  } else if (aa < 2.35) {
+    if (p.finalJump) { startStick(a, '演技終了'); return; }
+    drop(a);
+    if (el.length > 0) addElement(a > 0 ? '腹落ち' : '背落ち', 0);
+  } else crash(d);
+}
+function normalContact(a) {
+  p.th = a; p.w = 0; p.contact = true; p.contactT = 0;
+  p.D = Math.min(0.75, 0.25 + Math.abs(p.vy) * 0.04);
+}
+function startStick(a, reason) {
+  p.th = Math.abs(a) < 0.75 ? a : 0; p.w = 0; p.contact = true; p.stick = true; p.stickT = 0; p.drop = 0;
+  p.D = Math.min(0.75, 0.25 + Math.abs(p.vy) * 0.04);
+  endReason = reason;
+  if (reason === '演技終了') { pop(Math.abs(a) < 0.15 ? 'ビタ止め！' : 'フィニッシュ', '#ffd23f', 1.3, 0.6); sfx.perfect(); }
+  else { pop('中断', '#ffb36b', 1.3, 0.6); sfx.drop(); }
+}
+function finishTwist() {
+  if (p.twist < 0 && p.twisted) return;
+  p.face = -p.face; p.twist = -1; p.twisted = true;
+  if (st === 'play') pop('1/2ひねり', '#ffe9a8', 0.75, 1.0);
+}
+function drop(a) {
+  p.th = a; p.w = 0; p.leanK = 0; p.lean = 0; p.dir = 0;
+  p.drop = Math.sign(a);   // +1 腹落ち / -1 背落ち
+  p.contact = true; p.contactT = 0;
+  p.D = Math.min(0.3, 0.12 + Math.abs(p.vy) * 0.02);
+  pop(a > 0 ? '腹落ち' : '背落ち', '#9fd0ff', 1.1, 0.4);
+  if (el.length > 0) pop('0点', '#e6e6e6', 0.8, -0.2);
+  sfx.drop();
+}
+function crash(d) {
+  st = 'crash'; crashT = 0; endReason = '転倒';
+  p.th = d; p.leanK = 0; p.lean = 0;
+  const s = Math.sign(p.w) || (Math.random() < 0.5 ? -1 : 1);
+  p.vy = 3 + Math.random() * 1.5;
+  p.vx = (Math.random() < 0.5 ? -1 : 1) * (1.2 + Math.random() * 1.3);
+  p.w = s * (4 + Math.random() * 3); p.flail = 1; bedDepth = 0.35;
+  pop('失敗…', '#ff6b6b', 1.2, 0.3); sfx.fail();
+}
+function airUpdate(dt) {
+  p.airT += dt; p.vy -= G * dt; p.y += p.vy * dt;
+  p.apex = Math.max(p.apex, p.y - 0.9);
+  const per = Math.max(0.7, 1.1 - 0.035 * el.length);   // 演技が進むほど傾きの揺れが速くなる
+  p.lean = 0.3 * Math.sin(p.leanPh + p.airT * TAU / per);
+  if (p.recover) {
+    p.th += (0 - p.th) * (1 - Math.exp(-dt * 3.5));
+    p.tuck *= Math.exp(-dt * 10); p.w = 0;
+  } else if (holding && st === 'play' && !p.finalJump) {
+    if (!p.dir) { p.dir = p.forceDir || (p.lean >= 0 ? 1 : -1); p.shape = nextShape(p.dir); }
+    p.w += (p.dir * TW - p.w) * (1 - Math.exp(-dt * 9));
+    p.tuck += (1 - p.tuck) * (1 - Math.exp(-dt * 14));
+  } else {
+    p.w *= Math.exp(-dt * 4.5);
+    p.tuck *= Math.exp(-dt * 10);
+  }
+  if (p.dir) p.leanK *= Math.exp(-dt * 6);
+  p.th += p.w * dt;
+  // 前方系は回転を止めた後、自動で1/2ひねり（向きが反転）
+  if (p.dir > 0 && !holding && !p.twisted && p.twist < 0 && Math.abs(p.w) < 3 && p.vy < 0) { p.twist = 0; sfx.twist && sfx.twist(); }
+  if (p.twist >= 0) { p.twist += dt / 0.32; if (p.twist >= 1) finishTwist(); }
+  bedDepth *= Math.exp(-dt * 10);
+  if (p.vy < 0 && lowest() <= 0) touchdown();
+}
+function contactUpdate(dt) {
+  p.contactT += dt;
+  const k = Math.min(1, p.contactT / CT), s = Math.sin(Math.PI * k);
+  if (p.stick) {   // ストップ（ビタ止め）
+    p.stickT += dt; const t = p.stickT, h = CT / 2;
+    bedDepth = t < h ? p.D * Math.sin(Math.PI * t / CT) : p.D * Math.exp(-(t - h) * 3.5) * Math.abs(Math.cos((t - h) * 11));
+    p.crouch = t < h ? 0.85 * Math.sin(Math.PI * t / CT) : 0.85 * Math.exp(-(t - h) * 3);
+    p.tuck *= Math.exp(-dt * 15); p.th *= Math.exp(-dt * 12); p.lean = 0;
+    p.y = -bedDepth + footY();
+    if (t > 1.5 && st === 'play') { st = 'over'; overT = 0; finalize(); }
+    return;
+  }
+  if (p.drop) {
+    p.crouch = 0; p.tuck *= Math.exp(-dt * 15);
+    p.th += (p.drop * Math.PI / 2 - p.th) * (1 - Math.exp(-dt * 15));
+    bedDepth = p.D * s;
+    p.y += 0.1 - bedDepth * 0.6 - lowest();
+    if (k >= 1) launch();
+    return;
+  }
+  p.crouch = 0.85 * s; p.tuck *= Math.exp(-dt * 15); p.th *= Math.exp(-dt * 18); p.lean = 0;
+  bedDepth = p.D * s;
+  p.y = -bedDepth + footY();
+  if (k >= 1) launch();
+}
+function crashUpdate(dt) {
+  p.vy -= G * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.th += p.w * dt;
+  p.tuck *= Math.exp(-dt * 3);
+  const low = lowest();
+  const ax = Math.abs(p.x);
+  const floor = ax < 2.5 ? 0 : ax < 4.2 ? GROUND + 0.3 : GROUND;
+  if (low < floor) {
+    p.y += floor - low;
+    if (p.vy < 0) {
+      p.vy = -p.vy * (floor === 0 ? 0.55 : 0.25);
+      if (floor === 0) bedDepth = Math.min(0.4, bedDepth + Math.abs(p.vy) * 0.05);
+      p.w *= 0.65; p.vx *= 0.85;
+      if (Math.abs(p.vy) < 0.6) p.vy = 0;
+    }
+    if (p.vy === 0) { p.vx *= Math.exp(-dt * 4); p.w *= Math.exp(-dt * 5); p.flail *= Math.exp(-dt * 2); }
+  }
+  bedDepth *= Math.exp(-dt * 6);
+}
+function finalize() {
+  if (score > best) { best = score; newBest = score > 0; try { localStorage.setItem('tflip_best10', best); } catch (e) {} }
+}
+function update(dt) {
+  time += dt;
+  if (st === 'over' && p.stick) { overT += dt; contactUpdate(dt); }
+  else if (st === 'crash' || st === 'over') {
+    crashUpdate(dt);
+    if (st === 'crash') { crashT += dt; if (crashT > 1.8) { st = 'over'; overT = 0; finalize(); } }
+    else overT += dt;
+  } else if (p.contact) contactUpdate(dt);
+  else airUpdate(dt);
+  if (whoosh) {
+    const on = !muted && st === 'play' && !p.contact;
+    const tg = on ? Math.min(0.13, Math.abs(p.w) / TW * 0.13) : 0;
+    whoosh.g.gain.setTargetAtTime(tg, AC.currentTime, 0.04);
+    whoosh.bp.frequency.setTargetAtTime(450 + Math.abs(p.w) * 70, AC.currentTime, 0.05);
+  }
+  const visTop = bedY / S;
+  const target = Math.max(0, p.y + 1.6 - (visTop - 1.8));
+  camY += (target - camY) * (1 - Math.exp(-dt * 5));
+  for (const q of pops) { q.t += dt; q.y += dt * 0.6; }
+  pops = pops.filter(q => q.t < 1.4);
+}
+
+// ---- 描画 ----
+const sx = x => cx + x * S;
+const sy = y => bedY - (y - camY) * S;
+function txt(s, x, y, size, col = '#fff', align = 'center', alpha = 1) {
+  ctx.save(); ctx.globalAlpha = alpha;
+  ctx.font = `900 ${size}px ${FONT}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round'; ctx.lineWidth = size * 0.2; ctx.strokeStyle = 'rgba(15,35,70,.9)';
+  ctx.strokeText(s, x, y); ctx.fillStyle = col; ctx.fillText(s, x, y); ctx.restore();
+}
+// 奥行き付きの座標（z: 手前が＋）
+const KZ = 0.2;
+const pz = (x, y, z) => [sx(x), sy(y) + z * KZ * S];
+function poly(pts, fill, stroke, lw) {
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw || 1; ctx.stroke(); }
+}
+function rectW(x0, y0, x1, y1, col) { // ワールド座標の長方形（奥の壁）
+  ctx.fillStyle = col; ctx.fillRect(sx(x0), sy(y1), (x1 - x0) * S, (y1 - y0) * S);
+}
+function drawBackground() {
+  const fy = sy(GROUND) - 2.4 * KZ * S;   // 床の奥（壁との境目）。奥行き分だけ上に
+  const xL = -cx / S - 1, xR = cx / S + 1;
+  // 天井・上部の壁
+  ctx.fillStyle = '#5d6166'; ctx.fillRect(0, 0, W, H);
+  rectW(xL, 7.6, xR, 9.6, '#d9d0b6');
+  // 天井トラス
+  ctx.strokeStyle = '#3e4247'; ctx.lineWidth = Math.max(2, 0.06 * S);
+  for (let x = Math.floor(xL / 2) * 2; x < xR; x += 2) {
+    ctx.beginPath(); ctx.moveTo(sx(x), sy(9.6)); ctx.lineTo(sx(x + 1), sy(11.2)); ctx.lineTo(sx(x + 2), sy(9.6)); ctx.stroke();
+  }
+  rectW(xL, 11.1, xR, 11.3, '#3e4247');
+  // 照明
+  for (let x = Math.floor(xL / 3.2) * 3.2 + 1.2; x < xR; x += 3.2) {
+    const g = ctx.createRadialGradient(sx(x), sy(10.3), 0, sx(x), sy(10.3), 0.9 * S);
+    g.addColorStop(0, 'rgba(255,255,240,.9)'); g.addColorStop(1, 'rgba(255,255,240,0)');
+    ctx.fillStyle = g; ctx.fillRect(sx(x) - S, sy(10.3) - S, 2 * S, 2 * S);
+    rectW(x - 0.25, 10.15, x + 0.25, 10.4, '#fffdf2');
+  }
+  // 鉄骨の梁（横）
+  rectW(xL, 9.45, xR, 9.6, '#8d9298');
+  rectW(xL, 7.85, xR, 8.0, '#a3a8ad');
+  rectW(xL, 7.55, xR, 7.65, '#8d9298');
+  // 柱（縦）
+  for (let x = Math.floor(xL / 4) * 4 + 1; x < xR; x += 4) rectW(x - 0.07, 7.6, x + 0.07, 9.6, '#9aa0a6');
+  // カーテン
+  rectW(xL, GROUND, xR, 7.55, '#eadfc4');
+  for (let x = Math.floor(xL / 0.45) * 0.45; x < xR; x += 0.45) {
+    rectW(x, GROUND, x + 0.12, 7.5, 'rgba(160,140,100,.18)');
+    rectW(x + 0.24, GROUND, x + 0.3, 7.5, 'rgba(255,255,255,.35)');
+  }
+  rectW(xL, 7.42, xR, 7.55, '#cfc3a5');
+  // バナー
+  const banner = (x0, y0, w, h, bg, fg, stripe, text) => {
+    rectW(x0, y0, x0 + w, y0 + h, bg);
+    if (stripe) { rectW(x0, y0 + h - 0.1, x0 + w, y0 + h - 0.04, stripe); rectW(x0, y0 + 0.04, x0 + w, y0 + 0.1, stripe); }
+    ctx.save(); ctx.fillStyle = fg;
+    let fsz = 0.26 * S;
+    ctx.font = `700 ${fsz}px Georgia, serif`;
+    const tw = ctx.measureText(text).width, maxW = w * S * 0.82;
+    if (tw > maxW) { fsz *= maxW / tw; ctx.font = `700 ${fsz}px Georgia, serif`; }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, sx(x0 + w / 2), sy(y0 + h / 2)); ctx.restore();
+  };
+  banner(-2.85, 3.0, 1.5, 2.6, '#2a5bb8', '#fff', null, 'TRAMPOLINE');
+  banner(0.7, 2.3, 2.3, 2.2, '#f7f7f4', '#22304a', '#22304a', 'TRAMPOLINE');
+  // 床
+  const fg = ctx.createLinearGradient(0, fy, 0, H);
+  fg.addColorStop(0, '#b97a3c'); fg.addColorStop(1, '#d99a55');
+  ctx.fillStyle = fg; ctx.fillRect(0, fy, W, H - fy);
+  ctx.fillStyle = '#6b5a3e'; ctx.fillRect(0, fy - 0.06 * S, W, 0.06 * S);   // 幅木
+  ctx.strokeStyle = 'rgba(90,50,20,.18)'; ctx.lineWidth = 1;
+  for (let y = fy + 6; y < H; y += Math.max(5, 0.12 * S)) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, fy + 0.75 * S); ctx.lineTo(W, fy + 0.75 * S); ctx.stroke();
+  ctx.strokeStyle = 'rgba(40,120,60,.6)';
+  ctx.beginPath(); ctx.moveTo(0, fy + 0.2 * S); ctx.lineTo(W, fy + 0.2 * S); ctx.stroke();
+  // 奥の別のトランポリン（小さめ）
+  for (const x of [-6.2, 6.2]) {
+    const y = GROUND + 0.75;
+    rectW(x - 2.3, y, x + 2.3, y + 0.14, '#1f56b0');
+    rectW(x - 2.0, y + 0.14, x + 2.0, y + 0.18, '#e9eef2');
+    ctx.strokeStyle = '#a9b0b6'; ctx.lineWidth = Math.max(1, 0.03 * S);
+    for (const e of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx(x + e * 2.0), sy(y)); ctx.lineTo(sx(x + e * 1.5), sy(GROUND + 0.15)); ctx.lineTo(sx(x + e * 1.0), sy(y)); ctx.stroke(); }
+  }
+}
+// 競技用（ユーロ型）長方形トランポリン
+const BX = 2.14, BZ = 1.07;   // ベッド半分の長さ・奥行き
+const FX = 2.5, FZ = 1.42;    // フレーム（パッド外周）
+const PT = 0.13;              // パッドの厚み
+function drawLegs(z, col, lw) {
+  ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round';
+  for (const e of [-1, 1]) {
+    const a = pz(e * 2.42, -PT, z), b = pz(e * 1.45, -PT, z), f = pz(e * 1.95, GROUND, z);
+    const f2 = pz(e * 2.55, GROUND, z), f1 = pz(e * 1.3, GROUND, z);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(f[0], f[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(f1[0], f1[1]); ctx.lineTo(f2[0], f2[1]); ctx.stroke();
+    // 補強
+    const m1 = pz(e * 2.18, -0.6, z), m2 = pz(e * 1.72, -0.6, z);
+    ctx.beginPath(); ctx.moveTo(m1[0], m1[1]); ctx.lineTo(m2[0], m2[1]); ctx.stroke();
+  }
+  // 横フレーム
+  const l = pz(-FX + 0.1, -PT, z), r = pz(FX - 0.1, -PT, z);
+  ctx.beginPath(); ctx.moveTo(l[0], l[1]); ctx.lineTo(r[0], r[1]); ctx.stroke();
+}
+function drawMats() {
+  for (const e of [-1, 1]) {
+    const x0 = e * 2.75, x1 = e * 4.3;
+    const t = GROUND + 0.3;
+    poly([pz(x0, t, -1.6), pz(x1, t, -1.6), pz(x1, t, 1.6), pz(x0, t, 1.6)], '#2c63c4');
+    poly([pz(x0, t, 1.6), pz(x1, t, 1.6), pz(x1, GROUND, 1.6), pz(x0, GROUND, 1.6)], '#1d4a9c');
+  }
+}
+function drawTrampBack() {
+  drawMats();
+  drawLegs(-FZ + 0.15, '#9aa3ab', Math.max(2, 0.05 * S));
+  // ばね（奥・左右）
+  // パッド：奥側と左右
+  poly([pz(-FX, 0, -FZ), pz(FX, 0, -FZ), pz(BX, 0, -BZ), pz(-BX, 0, -BZ)], '#2b6fd6');
+  poly([pz(-FX, 0, -FZ), pz(-BX, 0, -BZ), pz(-BX, 0, BZ), pz(-FX, 0, FZ)], '#2566c9');
+  poly([pz(FX, 0, -FZ), pz(BX, 0, -BZ), pz(BX, 0, BZ), pz(FX, 0, FZ)], '#2566c9');
+  // 端のパッド前面
+  // ベッド
+  poly([pz(-BX, 0, -BZ), pz(BX, 0, -BZ), pz(BX, 0, BZ), pz(-BX, 0, BZ)], '#eef1f3');
+  // ベッドの網目
+  ctx.strokeStyle = 'rgba(150,160,170,.35)'; ctx.lineWidth = 1;
+  for (let x = -BX; x <= BX + 0.01; x += 0.25) { const a = pz(x, 0, -BZ), b = pz(x, 0, BZ); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+  // 赤ライン（十字とゾーン）
+  ctx.strokeStyle = '#d83a3a'; ctx.lineWidth = Math.max(1.5, 0.035 * S);
+  const line = (a, b) => { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); };
+  line(pz(-0.5, 0, 0), pz(0.5, 0, 0)); line(pz(0, 0, -0.35), pz(0, 0, 0.35));
+  for (const e of [-1, 1]) line(pz(e * 1.0, 0, -BZ + 0.15), pz(e * 1.0, 0, BZ - 0.15));
+  // 沈み込み
+  if (bedDepth > 0.005) {
+    const dx = Math.max(-1.6, Math.min(1.6, p.x));
+    const L = pz(-BX, 0, BZ), Rr = pz(BX, 0, BZ), c = pz(dx, -2 * bedDepth, BZ);
+    const g = ctx.createLinearGradient(0, L[1], 0, L[1] + 2 * bedDepth * S);
+    g.addColorStop(0, '#c9cfd4'); g.addColorStop(1, '#9aa3ab');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(L[0], L[1]); ctx.quadraticCurveTo(c[0], c[1], Rr[0], Rr[1]); ctx.closePath(); ctx.fill();
+    // ベッド上の凹み影
+    const cc = pz(dx, 0, 0);
+    const rg = ctx.createRadialGradient(cc[0], cc[1], 0, cc[0], cc[1], 1.3 * S);
+    rg.addColorStop(0, `rgba(80,90,100,${Math.min(0.45, bedDepth)})`); rg.addColorStop(1, 'rgba(80,90,100,0)');
+    ctx.save(); ctx.beginPath();
+    const q = [pz(-BX, 0, -BZ), pz(BX, 0, -BZ), pz(BX, 0, BZ), pz(-BX, 0, BZ)];
+    ctx.moveTo(q[0][0], q[0][1]); for (const v of q.slice(1)) ctx.lineTo(v[0], v[1]); ctx.closePath(); ctx.clip();
+    ctx.fillStyle = rg; ctx.fillRect(cc[0] - 1.4 * S, cc[1] - 1.4 * S, 2.8 * S, 2.8 * S); ctx.restore();
+  }
+}
+function drawTrampFront() {
+  // 手前のフレームと脚
+  drawLegs(FZ - 0.1, '#c3cad0', Math.max(2, 0.06 * S));
+  // ばね
+  ctx.strokeStyle = '#8b939a'; ctx.lineWidth = Math.max(1, 0.025 * S);
+  for (let x = -BX + 0.1; x < BX; x += 0.18) {
+    const a = pz(x, -0.02, BZ), b = pz(x, -0.08, FZ - 0.05);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+  }
+  // 手前パッド（上面＋前面）
+  poly([pz(-FX, 0, FZ), pz(-BX, 0, BZ), pz(BX, 0, BZ), pz(FX, 0, FZ)], '#3478dc');
+  poly([pz(-FX, 0, FZ), pz(FX, 0, FZ), pz(FX, -PT, FZ), pz(-FX, -PT, FZ)], '#1c4fa6');
+  // 左右端の前面
+  for (const e of [-1, 1]) poly([pz(e * FX, 0, -FZ), pz(e * FX, 0, FZ), pz(e * FX, -PT, FZ), pz(e * FX, -PT, -FZ)], '#1a4795');
+  // パッドの継ぎ目とロゴ風ラベル
+  ctx.strokeStyle = 'rgba(10,30,80,.45)'; ctx.lineWidth = 1;
+  for (const x of [-1.25, 0, 1.25]) { const a = pz(x, 0, FZ), b = pz(x, -PT, FZ); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+  const lb = pz(-0.35, -0.02, FZ);
+  ctx.fillStyle = '#f2c230'; ctx.fillRect(lb[0], lb[1] + 0.015 * S, 0.7 * S, 0.08 * S);
+}
+function shoe(J, col) {   // 白いトランポリンシューズ
+  const d = [J.foot[0] - J.knee[0], J.foot[1] - J.knee[1]], l = Math.hypot(d[0], d[1]) || 1;
+  const u = [d[0] / l, d[1] / l];
+  ctx.strokeStyle = col; ctx.lineWidth = 0.12; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(J.foot[0] - u[0] * 0.07, J.foot[1] - u[1] * 0.07); ctx.lineTo(J.foot[0] + u[0] * 0.03, J.foot[1] + u[1] * 0.03); ctx.stroke();
+}
+function drawLeotard(sh) {
+  const base = [0, 0.02], v = [sh[0] - base[0], sh[1] - base[1]];
+  const L = Math.hypot(v[0], v[1]), ang = Math.atan2(v[1], v[0]), Wd = 0.155;
+  ctx.save(); ctx.translate(base[0], base[1]); ctx.rotate(ang);
+  // 胴体の形（+y が体の前側）
+  ctx.beginPath();
+  ctx.moveTo(-0.02, -Wd); ctx.lineTo(L - 0.04, -Wd * 0.95);
+  ctx.quadraticCurveTo(L + 0.06, 0, L - 0.04, Wd * 0.95);
+  ctx.lineTo(-0.02, Wd); ctx.closePath();
+  ctx.fillStyle = '#f7f7f9'; ctx.fill();
+  ctx.save(); ctx.clip();
+  const band = (pts, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(pts[0][0] * L, pts[0][1]); for (const q of pts.slice(1)) ctx.lineTo(q[0] * L, q[1]); ctx.closePath(); ctx.fill(); };
+  // 背中側から前へ流れる筆ストローク
+  band([[0.05, -0.17], [0.30, -0.17], [0.62, 0.02], [0.40, 0.0]], 'rgba(120,110,200,.55)');
+  band([[0.30, -0.17], [0.62, -0.17], [0.98, 0.06], [0.72, 0.02]], '#3b3fa0');
+  band([[0.55, -0.17], [0.70, -0.17], [1.05, 0.04], [0.92, 0.06]], '#d8262e');
+  band([[0.66, -0.17], [0.80, -0.17], [1.05, -0.02], [1.0, 0.03]], '#6d5bbd');
+  // 白いかすれ
+  ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 0.012;
+  for (const t of [0.42, 0.58, 0.76]) { ctx.beginPath(); ctx.moveTo(t * L, -0.17); ctx.lineTo((t + 0.3) * L, 0.02); ctx.stroke(); }
+  ctx.restore();
+  // 赤の縁取り（襟ぐり・袖ぐり）
+  ctx.strokeStyle = '#d8262e'; ctx.lineWidth = 0.028;
+  ctx.beginPath(); ctx.moveTo(L - 0.05, -Wd * 0.9); ctx.quadraticCurveTo(L + 0.05, 0, L - 0.05, Wd * 0.9); ctx.stroke();
+  ctx.restore();
+}
+function drawPlayer() {
+  const o = pose(), J = joints(o), B = joints(o, {ua: -0.25, th: 0.14, sh: -0.06});
+  ctx.save();
+  const fx = p.twist >= 0 ? p.face * Math.cos(Math.PI * p.twist) : p.face;
+  const pc = pivot(J);
+  ctx.translate(sx(p.x), sy(p.y)); ctx.scale(fx < 0 ? Math.min(-0.12, fx) : Math.max(0.12, fx), 1);
+  ctx.translate(pc[0] * S, pc[1] * S); ctx.rotate(disp()); ctx.translate(-pc[0] * S, -pc[1] * S); ctx.scale(S, S);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const line = (pts, w, c) => { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke(); };
+  // 奥側の腕・脚
+  line([B.sh, B.elbow, B.hand], 0.1, '#c98e6a');
+  line([B.hip, B.knee, B.foot], 0.13, '#c98e6a');
+  line([B.hip, [B.knee[0] * 0.4, B.knee[1] * 0.4]], 0.16, '#a81c22');
+  shoe(B, '#d9dde2');
+  // 胴体：白のレオタード（青・紫・赤の筆ストローク柄、赤の縁取り）
+  drawLeotard(J.sh);
+  // 赤のショートパンツ（腰まわり）
+  line([[0, -0.01], [J.sh[0] * 0.1, J.sh[1] * 0.1]], 0.29, '#d8262e');
+  // 手前の脚
+  line([J.hip, J.knee, J.foot], 0.135, '#e8b08a');
+  line([J.hip, [J.knee[0] * 0.42, J.knee[1] * 0.42]], 0.17, '#d8262e');
+  shoe(J, '#ffffff');
+  // 頭
+  const hd = J.head, ta = o.to;
+  ctx.fillStyle = '#e8b08a'; ctx.beginPath(); ctx.arc(hd[0], hd[1], 0.12, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#2b1d14'; ctx.beginPath(); ctx.arc(hd[0], hd[1], 0.125, 0, TAU); ctx.fill();
+  // 顔（前方向に目）
+  const fwd = dirv(ta - Math.PI / 2, 1); // 体の前方向
+  const up = dirv(ta, 1);
+  ctx.fillStyle = '#e8b08a'; ctx.beginPath();
+  ctx.arc(hd[0] + fwd[0] * 0.035 - up[0] * 0.01, hd[1] + fwd[1] * 0.035 - up[1] * 0.01, 0.1, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#222'; ctx.beginPath();
+  ctx.arc(hd[0] + fwd[0] * 0.08 + up[0] * 0.02, hd[1] + fwd[1] * 0.08 + up[1] * 0.02, 0.016, 0, TAU); ctx.fill();
+  // 手前の腕
+  line([J.sh, J.elbow, J.hand], 0.1, '#e8b08a');
+  ctx.restore();
+}
+function drawIndicator() {
+  if (st !== 'play' || p.contact || p.dir || p.recover || p.finalJump) return;
+  const fixed = !!p.forceDir;
+  const a = fixed ? 1 : Math.min(1, Math.abs(p.lean) / 0.3), f = fixed ? p.forceDir > 0 : p.lean >= 0;
+  const c = [sx(p.x), sy(p.y + 0.35)], R = 1.15 * S;
+  const col = f ? '255,190,40' : '90,200,255';
+  ctx.save(); ctx.globalAlpha = 0.25 + 0.75 * a;
+  ctx.translate(c[0], c[1]); ctx.scale(p.face, 1); ctx.translate(-c[0], -c[1]);
+  ctx.strokeStyle = `rgba(${col},1)`; ctx.lineWidth = 0.09 * S; ctx.lineCap = 'round';
+  const s0 = f ? -Math.PI * 0.8 : -Math.PI * 0.2, e0 = f ? -Math.PI * 0.2 : -Math.PI * 0.8;
+  ctx.beginPath(); ctx.arc(c[0], c[1], R, s0, e0, !f); ctx.stroke();
+  const ex = c[0] + R * Math.cos(e0), ey = c[1] + R * Math.sin(e0);
+  const tx = (f ? -1 : 1) * -Math.sin(e0), ty = (f ? 1 : -1) * Math.cos(e0);
+  const hs = 0.22 * S;
+  ctx.fillStyle = `rgba(${col},1)`; ctx.beginPath();
+  ctx.moveTo(ex + tx * hs, ey + ty * hs);
+  ctx.lineTo(ex - ty * hs * 0.7, ey + tx * hs * 0.7);
+  ctx.lineTo(ex + ty * hs * 0.7, ey - tx * hs * 0.7); ctx.fill();
+  ctx.restore();
+  txt((fixed ? '次は' : '') + (f ? '前宙' : '後宙') + '・' + SHAPE_JA[nextShape(f ? 1 : -1)], c[0], c[1] - R - 0.25 * S, Math.round(0.32 * S), f ? '#ffd23f' : '#7fe0ff', 'center', 0.3 + 0.7 * a);
+}
+function drawHUD() {
+  const fs = Math.max(14, Math.min(22, W / 22));
+  txt(String(score), 16, 30 + fs * 0.4, fs * 1.9, '#fffbe6', 'left');
+  txt('BEST ' + best, W - 16, 26, fs * 0.9, '#fff', 'right');
+  if (st === 'play' || st === 'crash') {
+    const h = Math.max(0, p.y - 0.9);
+    const stage = el.length === 0 ? 'ストレートジャンプ：技を決めると演技開始' : p.final ? '最後はストレートジャンプで止まる' : `演技中　技 ${el.length}/10`;
+    txt(stage, 16, 30 + fs * 2.2, fs * 0.8, el.length === 0 ? '#dfefff' : '#ffe9a8', 'left');
+    txt(`高さ ${h.toFixed(1)}m`, 16, 30 + fs * 3.3, fs * 0.8, '#fff', 'left');
+  }
+  for (const q of pops) {
+    const a = q.t < 1 ? 1 : 1 - (q.t - 1) / 0.4;
+    txt(q.text, Math.min(W - 80, Math.max(80, sx(q.x))), sy(q.y), Math.round(fs * 1.3 * q.size), q.color, 'center', a);
+  }
+}
+function panel(lines) {
+  const h = 30 + lines.reduce((t, l) => t + l[1] * 1.55, 0);
+  const w = Math.min(W - 32, 420), x = (W - w) / 2, y = H * 0.16;
+  ctx.fillStyle = 'rgba(12,28,58,.9)';
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, 18) : ctx.rect(x, y, w, h); ctx.fill();
+  let yy = y + 34;
+  for (const [s, size, col] of lines) { txt(s, W / 2, yy, size, col); yy += size * 1.55; }
+}
+function drawOverlay() {
+  const fs = Math.max(14, Math.min(20, W / 24));
+  if (st === 'title') {
+    panel([
+      ['TRAMPOLINE FLIP', fs * 1.8, '#ffd23f'],
+      ['ジャンプは自動', fs, '#fff'],
+      ['長押し中だけ回転（抱え込み）', fs, '#fff'],
+      ['押した瞬間の体の傾きで方向が決まる', fs * 0.85, '#dfefff'],
+      ['前に傾き→前宙 ／ 後ろに傾き→後宙', fs * 0.85, '#dfefff'],
+      ['離すと体が開いて回転が止まる', fs * 0.85, '#dfefff'],
+      ['姿勢は 伸身(L)→屈身(P)→抱え込み(T) の順に自動', fs * 0.8, '#dfefff'],
+      ['前方系は自動で1/2ひねりして向きが変わる', fs * 0.85, '#dfefff'],
+      ['最初の技から連続10本の合計点で勝負', fs * 0.85, '#b6ff6a'],
+      ['10本の後はストレートジャンプでビタ止め', fs * 0.85, '#b6ff6a'],
+      ['演技中は前方→後方→前方…と交互に自動で切替', fs * 0.8, '#b6ff6a'],
+      ['途中のストレートジャンプは中断', fs * 0.85, '#ffb36b'],
+      ['腹落ち・背落ちは0点で続行／頭から落ちたら終了', fs * 0.8, '#9fd0ff'],
+      ['タップでスタート', fs * 1.2, '#ffd23f'],
+    ]);
+  } else if (st === 'over') {
+    const head = endReason === '演技終了' ? ['演技終了', '#ffd23f'] : endReason === '中断' ? [`中断（${el.length}本）`, '#ffb36b'] : [`転倒（${el.length}本）`, '#ff8a8a'];
+    const lines = [
+      [head[0], fs * 1.7, head[1]],
+      ['合計 ' + score, fs * 1.4, '#fff'],
+      [newBest ? 'NEW RECORD!' : 'BEST ' + best, fs * 1.0, newBest ? '#ffd23f' : '#dfefff'],
+    ];
+    if (el.length === 0) lines.push(['技なし', fs * 0.8, '#dfefff']);
+    el.forEach((e, i) => lines.push([`${i + 1}. ${e.name}　${e.pts}`, fs * 0.78, e.pts > 0 ? '#ffffff' : '#9fb6cc']));
+    lines.push(['タップでもう一度', fs * 1.1, '#ffd23f']);
+    panel(lines);
+  }
+  ctx.save(); ctx.globalAlpha = 0.85; ctx.fillStyle = 'rgba(10,30,60,.55)';
+  ctx.beginPath(); ctx.arc(34, H - 34, 20, 0, TAU); ctx.fill(); ctx.restore();
+  txt('♪', 34, H - 34, 20, muted ? 'rgba(255,255,255,.4)' : '#fff');
+  if (muted) { ctx.strokeStyle = '#ff7070'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(22, H - 46); ctx.lineTo(46, H - 22); ctx.stroke(); }
+  txt('v0.8.3', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
+}
+function draw() {
+  drawBackground();
+  drawTrampBack();
+  drawPlayer();
+  drawTrampFront();
+  drawIndicator();
+  drawHUD();
+  drawOverlay();
+}
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.033, (now - last) / 1000); last = now;
+  update(dt); draw(); requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
