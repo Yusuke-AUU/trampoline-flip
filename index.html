@@ -65,7 +65,7 @@ const SHAPES = ['L', 'P', 'T'];   // 伸身 → 屈身 → 抱え込み の順�
 const SHAPE_JA = {L: '伸身', P: '屈身', T: '抱え込み'};
 let dirCount = {1: 0, '-1': 0};   // 方向ごとに決めた宙返りの本数   // lastDir: 直前の技の方向（+1前/-1後）   // 演技（10本）の記録
 let mode = 'normal';   // 'normal'＝技6種類 ／ 'hard'＝30技
-const bestKey = () => `tflip_best_${mode}`;
+const bestKey = () => `tflip_best2_${mode}`;   // 採点ルール変更（v1.3）で記録をリセット
 function loadBest() { try { best = +localStorage.getItem(bestKey()) || 0; } catch (e) { best = 0; } }
 loadBest();
 
@@ -105,7 +105,7 @@ const clouds = Array.from({length: 5}, (_, i) => ({x: Math.random(), y: 0.08 + M
 
 function resetPlayer() {
   p = {x: 0, vx: 0, y: 0.9, vy: 0, th: 0, w: 0, tuck: 0, crouch: 0, contact: true, contactT: 0, D: 0.3,
-       airT: 0, dir: 0, lean: 0, leanK: 1, leanPh: 0, bounceN: 0, apex: 0, flail: 0, drop: 0, recover: false, face: 1, twist: -1, twisted: false, final: false, finalJump: false, stick: false, stickT: 0, opened: false, openK: 0, openTarget: 0, wasHolding: false, rotFace: 1};
+       airT: 0, tx: 0, pos: 0, nextSide: -1, dir: 0, lean: 0, leanK: 1, leanPh: 0, bounceN: 0, apex: 0, flail: 0, drop: 0, recover: false, face: 1, twist: -1, twisted: false, final: false, finalJump: false, stick: false, stickT: 0, opened: false, openK: 0, openTarget: 0, wasHolding: false, rotFace: 1};
 }
 function startGame(m) {
   if (m) { mode = m; loadBest(); }
@@ -280,7 +280,7 @@ function flipName(turns) {
   return `${n}回宙返り（${f ? '前' : '後'}）`;
 }
 function launch() {
-  p.contact = false; p.crouch = 0; p.w = 0; p.dir = 0; p.airT = 0; p.twisted = false; p.twist = -1; p.shape = null;
+  p.vx = 0; p.contact = false; p.crouch = 0; p.w = 0; p.dir = 0; p.airT = 0; p.twisted = false; p.twist = -1; p.shape = null;
   p.opened = false; p.openK = 0; p.openTarget = 0; p.wasHolding = false; p.rotFace = p.face; p.plan = null;
   p.leanPh = Math.random() < 0.5 ? 0 : Math.PI;
   p.finalJump = p.final;   // 10本目の後は最後のストレートジャンプ
@@ -310,17 +310,31 @@ function difficulty(n, h, sh, dir) {
   if (dir < 0) d += n === 2 ? 0.1 : n === 3 ? 0.2 : n >= 4 ? 0.3 : 0;   // 後方の多回転ボーナス
   return Math.round(d * 10) / 10;
 }
+// 演技点は1本2.0点満点（減点も2倍）、跳躍時間は1本最大1.83秒（10本で18.3）、移動点は1本1.0点満点
+const T_MAX1 = 1.83, T_FULL = 2 * Math.sqrt(2 * MAXH / G);
+const tScore = airT => Math.min(T_MAX1, airT * T_MAX1 / T_FULL);
 function calcScore() {
   const n = el.length;
   const D = el.reduce((t, e) => t + e.d, 0);
-  const E = Math.max(0, n - el.reduce((t, e) => t + e.ded, 0));   // 1本1.0点満点からの減点
-  const T = el.reduce((t, e) => t + e.t, 0);                      // フライトタイムの合計
-  const Hs = n;                                                    // 移動なし＝1本1.0点
+  const E = Math.max(0, 2 * n - el.reduce((t, e) => t + e.ded, 0));
+  const T = el.reduce((t, e) => t + e.t, 0);
+  const Hs = Math.max(0, n - el.reduce((t, e) => t + (e.hd || 0), 0));
   return {D, E, T, H: Hs, total: D + E + T + Hs};
 }
+// 移動：PERFECT＝真ん中（0）／GOOD＝赤線の内側（−0.1）／着地乱れ＝赤線の外の端（−0.2）
+// ずれている間は同じ側に居続け、PERFECTで真ん中に戻る。真ん中から出るたびに 左→右→左… と交互
+const POS_X = [0, 0.6, 1.55];
+function sideFor(level) { return level === 0 ? 0 : p.pos ? Math.sign(p.pos) : p.nextSide; }
+function predictX(level) { return sideFor(level) * POS_X[level]; }
+function moveTo(level) {
+  const sd = sideFor(level);
+  if (level && !p.pos) p.nextSide = -sd;   // 次に真ん中から出るときは反対側
+  p.pos = sd * level; p.tx = sd * POS_X[level];
+  return level === 1 ? 0.1 : level === 2 ? 0.2 : 0;
+}
 const f1 = v => v.toFixed(1), f3 = v => v.toFixed(3);
-function addElement(name, d, ded, t) {
-  el.push({name, d, ded, t}); score = Math.round(calcScore().total * 1000) / 1000;
+function addElement(name, d, ded, t, hd) {
+  el.push({name, d, ded: ded * 2, t: tScore(t), hd: hd || 0}); score = Math.round(calcScore().total * 1000) / 1000;
   pop(`${el.length}/10`, '#ffffff', 0.8, 1.5);
   if (el.length === 10) {
     p.final = true;
@@ -356,10 +370,11 @@ function touchdown() {
       else if (p.plan && n === p.plan.n) skillCount[`${dir}_${n}`] = (skillCount[`${dir}_${n}`] || 0) + 1;
       pop(nm, turns > 0 ? '#ffd23f' : '#7fe0ff', 1.0, 0.5);
       pop(`D ${f1(dd)}`, '#fff', 1.0, 0);
-      pop(grade[0] + (grade[1] ? ` −${f1(grade[1])}` : ''), grade[2], 0.9, -0.5);
+      const hd = moveTo(aa < 0.12 ? 0 : aa < 0.35 ? 1 : 2);
+      pop(grade[0] + (grade[1] ? ` E−${f1(grade[1] * 2)}` : '') + (hd ? ` H−${f1(hd)}` : ''), grade[2], 0.9, -0.5);
       aa < 0.12 ? sfx.perfect() : sfx.good();
       lastDir = dir;
-      addElement(nm, dd, grade[1], p.airT);
+      addElement(nm, dd, grade[1], p.airT, hd);
     } else if (el.length > 0 && !p.recover) {   // 演技中のストレートジャンプ＝中断
       endRot(); startStick(a, '中断'); return;
     }
@@ -367,11 +382,11 @@ function touchdown() {
   } else if (aa < 2.35) {
     if (p.finalJump) { endRot(); startStick(a, '演技終了'); return; }
     endRot(); drop(a);
-    if (el.length > 0) addElement(a > 0 ? '腹落ち' : '背落ち', 0, 0.5, p.airT);
+    if (el.length > 0) addElement(a > 0 ? '腹落ち' : '背落ち', 0, 0.5, p.airT, moveTo(2));
   } else { endRot(); crash(d); }
 }
 function normalContact(a) {
-  p.th = a; p.w = 0; p.contact = true; p.contactT = 0;
+  p.vx = 0; p.th = a; p.w = 0; p.contact = true; p.contactT = 0;
   p.D = Math.min(0.75, 0.25 + Math.abs(p.vy) * 0.04);
 }
 function startStick(a, reason) {
@@ -387,7 +402,7 @@ function finishTwist() {
   if (st === 'play') pop('1/2ひねり', '#ffe9a8', 0.75, 1.0);
 }
 function drop(a) {
-  p.th = a; p.w = 0; p.leanK = 0; p.lean = 0; p.dir = 0;
+  p.vx = 0; p.th = a; p.w = 0; p.leanK = 0; p.lean = 0; p.dir = 0;
   p.drop = Math.sign(a);   // +1 腹落ち / -1 背落ち
   p.contact = true; p.contactT = 0;
   p.D = Math.min(0.3, 0.12 + Math.abs(p.vy) * 0.02);
@@ -437,10 +452,16 @@ function openBody() {
   const d = Math.abs(eDeg + 15) / OPEN_WIDE;
   const mark = d <= 15 ? ['◎', '#ff7ab8'] : d <= 30 ? ['○', '#b6ff6a'] : d <= 45 ? ['△', '#ffb36b'] : ['×', '#ff8a8a'];
   pop(`開き ${clock} ${mark[0]}`, mark[1], 0.85, 1.6);
+  // 開いた時点で着地の評価が決まるので、落ちてくる位置へ空中で流れていく
+  if (st === 'play' && !p.finalJump) {
+    const aa = Math.abs(na(p.openTarget));
+    const lv = aa < 0.12 ? 0 : aa < 0.35 ? 1 : aa < 2.35 ? 2 : -1;
+    if (lv >= 0) p.vx = (predictX(lv) - p.x) / Math.max(0.12, timeToLand());
+  }
   tone(900, 1300, 0.08, 'triangle', 0.08);
 }
 function airUpdate(dt) {
-  p.airT += dt; p.vy -= G * dt; p.y += p.vy * dt;
+  p.airT += dt; p.vy -= G * dt; p.y += p.vy * dt; p.x += p.vx * dt;
   p.apex = Math.max(p.apex, p.y - 0.9);
   const per = Math.max(0.7, 1.1 - 0.035 * el.length);   // 演技が進むほど傾きの揺れが速くなる
   p.lean = 0.3 * Math.sin(p.leanPh + p.airT * TAU / per);
@@ -471,6 +492,7 @@ function airUpdate(dt) {
 }
 function contactUpdate(dt) {
   p.contactT += dt;
+  p.x += (p.tx - p.x) * (1 - Math.exp(-dt * 14));   // 着地位置へずれる／真ん中へ戻る
   const k = Math.min(1, p.contactT / CT), s = Math.sin(Math.PI * k);
   p.openK *= Math.exp(-dt * 10);
   if (p.stick) {   // ストップ（ビタ止め）
@@ -909,6 +931,7 @@ function drawOverlay() {
       ['NORMAL：技は前後×1〜3回宙、姿勢はL→P→T', fs * 0.82, '#b6ff6a'],
       ['HARD：ひねり入りの30技が順番に自動で入る', fs * 0.82, '#b6ff6a'],
       ['10本目のあとはストレートジャンプでビタ止め', fs * 0.82, '#b6ff6a'],
+      ['着地がずれると端へ移動（PERFECTで真ん中に戻る）', fs * 0.82, '#b6ff6a'],
       ['▼ 注意', fs * 0.9, '#ffe9a8'],
       ['演技中にストレートジャンプすると中断', fs * 0.82, '#ffb36b'],
       ['腹落ち・背落ちは0点で続行', fs * 0.82, '#ffb36b'],
@@ -925,7 +948,7 @@ function drawOverlay() {
       [newBest ? 'NEW RECORD!' : 'BEST ' + f3(best), fs * 1.0, newBest ? '#ffd23f' : '#dfefff'],
     ];
     if (el.length === 0) lines.push(['技なし', fs * 0.8, '#dfefff']);
-    el.forEach((e, i) => lines.push([`${i + 1}. ${e.name}　D${f1(e.d)}　${e.ded ? '−' + f1(e.ded) : '±0'}`, fs * 0.78, e.d > 0 ? '#ffffff' : '#9fb6cc']));
+    el.forEach((e, i) => lines.push([`${i + 1}. ${e.name}　D${f1(e.d)}　E${e.ded ? '−' + f1(e.ded) : '±0'}${e.hd ? '　H−' + f1(e.hd) : ''}`, fs * 0.78, e.d > 0 ? '#ffffff' : '#9fb6cc']));
     lines.push(['タップでタイトルへ', fs * 1.1, '#ffd23f']);
     panel(lines);
   }
@@ -933,7 +956,7 @@ function drawOverlay() {
   ctx.beginPath(); ctx.arc(34, H - 34, 20, 0, TAU); ctx.fill(); ctx.restore();
   txt('♪', 34, H - 34, 20, muted ? 'rgba(255,255,255,.4)' : '#fff');
   if (muted) { ctx.strokeStyle = '#ff7070'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(22, H - 46); ctx.lineTo(46, H - 22); ctx.stroke(); }
-  txt('v1.2.1', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
+  txt('v1.3', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
 }
 function draw() {
   drawBackground();
