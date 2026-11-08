@@ -666,25 +666,32 @@ function panel(lines) {
   ctx.fillStyle = 'rgba(12,28,58,.9)';
   ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, 18) : ctx.rect(x, y, w, h); ctx.fill();
   let yy = y + 34;
-  for (const [s, size, col] of lines) { txt(s, W / 2, yy, size, col); yy += size * 1.55; }
+  for (const [s, size, col] of lines) {
+    ctx.font = `900 ${size}px ${FONT}`; const tw = ctx.measureText(s).width;   // 幅に収まらない行は縮める
+    txt(s, W / 2, yy, tw > w - 28 ? size * (w - 28) / tw : size, col); yy += size * 1.55;
+  }
 }
 function drawOverlay() {
   const fs = Math.max(14, Math.min(20, W / 24));
   if (st === 'title') {
     panel([
       ['TRAMPOLINE FLIP', fs * 1.8, '#ffd23f'],
-      ['ジャンプは自動', fs, '#fff'],
-      ['長押し中だけ回転（抱え込み）', fs, '#fff'],
-      ['押した瞬間の体の傾きで方向が決まる', fs * 0.85, '#dfefff'],
-      ['前に傾き→前宙 ／ 後ろに傾き→後宙', fs * 0.85, '#dfefff'],
-      ['離すと体が開いて回転が止まる', fs * 0.85, '#dfefff'],
-      ['姿勢は 伸身(L)→屈身(P)→抱え込み(T) の順に自動', fs * 0.8, '#dfefff'],
-      ['前方系は自動で1/2ひねりして向きが変わる', fs * 0.85, '#dfefff'],
-      ['最初の技から連続10本の合計点で勝負', fs * 0.85, '#b6ff6a'],
-      ['10本の後はストレートジャンプでビタ止め', fs * 0.85, '#b6ff6a'],
-      ['演技中は前方→後方→前方…と交互に自動で切替', fs * 0.8, '#b6ff6a'],
-      ['途中のストレートジャンプは中断', fs * 0.85, '#ffb36b'],
-      ['腹落ち・背落ちは0点で続行／頭から落ちたら終了', fs * 0.8, '#9fd0ff'],
+      ['▼ 操作', fs * 0.9, '#ffe9a8'],
+      ['ジャンプは自動', fs * 0.85, '#fff'],
+      ['長押ししている間だけ回転', fs * 0.85, '#fff'],
+      ['離すと体が開いて回転が止まる', fs * 0.85, '#fff'],
+      ['矢印が「前宙」のとき押すと前方系', fs * 0.85, '#fff'],
+      ['「後宙」のとき押すと後方系', fs * 0.85, '#fff'],
+      ['▼ 演技', fs * 0.9, '#ffe9a8'],
+      ['最初の技から連続10本の合計点で勝負', fs * 0.82, '#b6ff6a'],
+      ['演技中は前方系と後方系が交互になる', fs * 0.82, '#b6ff6a'],
+      ['姿勢は 伸身(L)→屈身(P)→抱え込み(T) の順', fs * 0.82, '#b6ff6a'],
+      ['前方系は着地前に自動で1/2ひねり', fs * 0.82, '#b6ff6a'],
+      ['10本目のあとはストレートジャンプでビタ止め', fs * 0.82, '#b6ff6a'],
+      ['▼ 注意', fs * 0.9, '#ffe9a8'],
+      ['演技中にストレートジャンプすると中断', fs * 0.82, '#ffb36b'],
+      ['腹落ち・背落ちは0点で続行', fs * 0.82, '#ffb36b'],
+      ['頭から落ちたら終了', fs * 0.82, '#ffb36b'],
       ['タップでスタート', fs * 1.2, '#ffd23f'],
     ]);
   } else if (st === 'over') {
