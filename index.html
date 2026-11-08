@@ -32,7 +32,8 @@ const FONT = '"Hiragino Sans","Hiragino Kaku Gothic ProN","Meiryo",sans-serif';
 let W, H, DPR, S, bedY, cx;
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = window.innerWidth; H = window.innerHeight;
+  const r = cv.getBoundingClientRect();          // 実際に表示されているサイズで描く（スマホのアドレスバー対策）
+  W = Math.round(r.width) || window.innerWidth; H = Math.round(r.height) || window.innerHeight;
   cv.width = W * DPR; cv.height = H * DPR;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   S = Math.min(H / 10.8, W / 6.0);       // px per meter
@@ -40,6 +41,9 @@ function resize() {
   cx = W / 2;
 }
 addEventListener('resize', resize); resize();
+if (window.visualViewport) visualViewport.addEventListener('resize', resize);
+addEventListener('orientationchange', () => setTimeout(resize, 300));
+function syncSize() { const r = cv.getBoundingClientRect(); if (Math.round(r.width) !== W || Math.round(r.height) !== H) resize(); }
 
 // ---- 定数 ----
 const G = 11;          // 重力 m/s^2
@@ -246,9 +250,11 @@ function down(x, y) {
 function up() { holding = false; }
 function toggleMute() { muted = !muted; try { localStorage.setItem('tflip_mute', muted ? '1' : '0'); } catch (e) {} }
 cv.addEventListener('pointerdown', e => {
-  e.preventDefault(); initAudio();
-  if (e.clientX < 64 && e.clientY > H - 64) { toggleMute(); return; }
-  down(e.clientX, e.clientY);
+  e.preventDefault(); initAudio(); syncSize();
+  const r = cv.getBoundingClientRect();            // 表示上の位置 → 描画座標
+  const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+  if (x < 64 && y > H - 64) { toggleMute(); return; }
+  down(x, y);
 });
 addEventListener('pointerup', up); addEventListener('pointercancel', up);
 cv.addEventListener('contextmenu', e => e.preventDefault());
@@ -808,15 +814,19 @@ function drawHUD() {
     txt(q.text, Math.min(W - 80, Math.max(80, sx(q.x))), sy(q.y), Math.round(fs * 1.3 * q.size), q.color, 'center', a);
   }
 }
-function panel(lines) {
-  const h = 30 + lines.reduce((t, l) => t + l[1] * 1.55, 0);
-  const w = Math.min(W - 32, 420), x = (W - w) / 2, y = H * 0.16;
+function panel(lines, reserve = 0, side = false) {
+  let h = 30 + lines.reduce((t, l) => t + l[1] * 1.55, 0);
+  const room = side ? H - 90 : H - reserve - 70;      // 下（横画面では右）のボタンと重ならない大きさに収める
+  if ((reserve || side) && h > room) { const k = Math.max(0.4, room / h); lines = lines.map(([s, z, c]) => [s, z * k, c]); h = 30 + lines.reduce((t, l) => t + l[1] * 1.55, 0); }
+  const w = side ? Math.min(W * 0.58, 440) : Math.min(W - 32, 420);
+  const x = side ? Math.max(16, W / 2 - w - 8) : (W - w) / 2;
+  const y = side ? Math.max(60, (H - h) / 2 + 10) : reserve ? Math.max(56, Math.min(H * 0.16, H - reserve - h - 12)) : H * 0.16;
   ctx.fillStyle = 'rgba(12,28,58,.9)';
   ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, 18) : ctx.rect(x, y, w, h); ctx.fill();
   let yy = y + 34;
   for (const [s, size, col] of lines) {
     ctx.font = `900 ${size}px ${FONT}`; const tw = ctx.measureText(s).width;   // 幅に収まらない行は縮める
-    txt(s, W / 2, yy, tw > w - 28 ? size * (w - 28) / tw : size, col); yy += size * 1.55;
+    txt(s, x + w / 2, yy, tw > w - 28 ? size * (w - 28) / tw : size, col); yy += size * 1.55;
   }
   return {x, y, w, h};
 }
@@ -827,12 +837,25 @@ function button(b, label, sub, bg, fg) {
   plain(label, b.y + b.h * (sub ? 0.4 : 0.5), Math.min(22, b.h * 0.4), 900);
   if (sub) plain(sub, b.y + b.h * 0.76, Math.min(12, b.h * 0.22), 700);
 }
+const wideTitle = () => W > H * 1.25 && H < 560;   // 横長で背の低い画面
 function drawTitleButtons(pb, fs) {
+  if (wideTitle()) {                                   // パネルの右に縦並び
+    const bx = pb.x + pb.w + 16, bw2 = Math.min(220, W - bx - 16), bh2 = Math.min(64, (H - 120) / 3.4);
+    const by = Math.max(60, H / 2 - (bh2 * 2 + bh2 * 0.7 + 20) / 2 + 10);
+    const bN = {x: bx, y: by, w: bw2, h: bh2, act: () => startGame('normal')};
+    const bH = {x: bx, y: by + bh2 + 10, w: bw2, h: bh2, act: () => startGame('hard')};
+    const bL = {x: bx, y: by + bh2 * 2 + 20, w: bw2, h: bh2 * 0.7, act: openList};
+    return drawBtns(bN, bH, bL);
+  }
   const gap = 10, bw = (pb.w - gap) / 2, bh = Math.max(50, fs * 3.2);
-  let y = Math.min(pb.y + pb.h + 12, H - bh - 60);
+  const lh = Math.max(34, fs * 2);
+  const y = Math.min(pb.y + pb.h + 12, H - bh - 8 - lh - 30);
   const bN = {x: pb.x, y, w: bw, h: bh, act: () => startGame('normal')};
   const bH = {x: pb.x + bw + gap, y, w: bw, h: bh, act: () => startGame('hard')};
-  const bL = {x: pb.x + bw + gap, y: y + bh + 8, w: bw, h: Math.max(34, fs * 2), act: openList};
+  const bL = {x: pb.x + bw + gap, y: y + bh + 8, w: bw, h: lh, act: openList};
+  drawBtns(bN, bH, bL);
+}
+function drawBtns(bN, bH, bL) {
   titleBtns = [bN, bH, bL];
   let bestN = 0, bestH = 0; try { bestN = +localStorage.getItem('tflip_best_normal') || 0; bestH = +localStorage.getItem('tflip_best_hard') || 0; } catch (e) {}
   button(bN, 'NORMAL', 'BEST ' + f3(bestN), '#ffd23f', '#1b2a4a');
@@ -888,7 +911,7 @@ function drawOverlay() {
       ['演技中にストレートジャンプすると中断', fs * 0.82, '#ffb36b'],
       ['腹落ち・背落ちは0点で続行', fs * 0.82, '#ffb36b'],
       ['頭から落ちたら終了', fs * 0.82, '#ffb36b'],
-    ]);
+    ], Math.max(50, fs * 3.2) + 8 + Math.max(34, fs * 2) + 12 + 30, wideTitle());
     drawTitleButtons(pb, fs);
   } else if (st === 'over') {
     const sc = calcScore();
@@ -908,7 +931,7 @@ function drawOverlay() {
   ctx.beginPath(); ctx.arc(34, H - 34, 20, 0, TAU); ctx.fill(); ctx.restore();
   txt('♪', 34, H - 34, 20, muted ? 'rgba(255,255,255,.4)' : '#fff');
   if (muted) { ctx.strokeStyle = '#ff7070'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(22, H - 46); ctx.lineTo(46, H - 22); ctx.stroke(); }
-  txt('v1.2', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
+  txt('v1.2.1', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
 }
 function draw() {
   drawBackground();
@@ -922,7 +945,7 @@ function draw() {
 let last = performance.now();
 function loop(now) {
   const dt = Math.min(0.033, (now - last) / 1000); last = now;
-  update(dt); draw(); requestAnimationFrame(loop);
+  syncSize(); update(dt); draw(); requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 })();
