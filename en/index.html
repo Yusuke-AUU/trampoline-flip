@@ -13,6 +13,9 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="apple-mobile-web-app-title" content="FLIP">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <!-- for SNS sharing -->
 <meta property="og:type" content="website">
 <meta property="og:title" content="TRAMPOLINE FLIP">
@@ -41,6 +44,54 @@ let LANG = (() => {
 })();
 const L = (ja, en) => LANG === 'en' ? en : ja;
 document.documentElement.lang = LANG;
+// ---- ホーム画面に追加 ----
+//  Android・PCのChrome/Edge：ボタンひとつで追加の確認画面を出せる
+//  iPhone：仕組み上ボタンで直接は追加できないので、手順を案内する
+let installPrompt = null, installBtn = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
+addEventListener('appinstalled', () => { installPrompt = null; });
+const UA = navigator.userAgent;
+const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IN_APP = /Line\/|Instagram|FBAN|FBAV|FB_IAB|Twitter|TikTok/i.test(UA);
+const IS_ANDROID = /Android/i.test(UA);
+const standalone = () => { try { return matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true; } catch (e) { return false; } };
+const canInstall = () => !standalone() && (!!installPrompt || IS_IOS || IS_ANDROID || IN_APP);
+if ('serviceWorker' in navigator && /netlify\.app$/.test(location.hostname)) navigator.serviceWorker.register('/sw.js').catch(() => {});
+async function doInstall() {
+  if (installPrompt) { const e = installPrompt; installPrompt = null; try { e.prompt(); await e.userChoice; } catch (err) {} return; }
+  showInstallGuide();
+}
+function showInstallGuide() {
+  const prev = st; st = 'list';
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;inset:0;z-index:20;background:rgba(6,14,36,.94);color:#fff;font-family:' + FONT + ';display:flex;align-items:center;justify-content:center;padding:20px';
+  const step = (n, t) => `<div style="display:flex;gap:12px;align-items:flex-start;margin:12px 0;text-align:left"><div style="flex:none;width:30px;height:30px;border-radius:50%;background:#ffd23f;color:#1b2a4a;font-weight:900;display:flex;align-items:center;justify-content:center">${n}</div><div style="font-size:16px;line-height:1.6;font-weight:700">${t}</div></div>`;
+  let body;
+  if (IN_APP) body = `<p style="font-size:15px;line-height:1.7;margin:0 0 6px">${L('LINEやインスタなどのアプリの中では、ホーム画面に追加できません。', 'You can\'t add to the home screen from inside apps like LINE or Instagram.')}</p>`
+    + step(1, L('画面のメニュー（…や︙）から「ブラウザで開く」を選ぶ', 'Open the menu (… or ⋮) and choose “Open in browser”'))
+    + step(2, L('開いたページで、もう一度「ホーム画面に追加」を押す', 'Then tap “Add to Home Screen” again on that page'));
+  else if (IS_IOS) body = step(1, L('Safariの共有ボタン <b style="font-size:20px">⬆︎</b> をタップ<br><span style="font-size:13px;color:#cfe0ff">（見当たらないときは画面下や右上の「…」の中）</span>', 'Tap Safari’s Share button <b style="font-size:20px">⬆︎</b><br><span style="font-size:13px;color:#cfe0ff">(if you can’t see it, look under “…” at the bottom or top right)</span>'))
+    + step(2, L('「ホーム画面に追加」を選ぶ', 'Choose “Add to Home Screen”'))
+    + step(3, L('右上の「追加」をタップ', 'Tap “Add” at the top right'));
+  else body = step(1, L('ブラウザ右上のメニュー（︙）を開く', 'Open the browser menu (⋮) at the top right'))
+    + step(2, L('「ホーム画面に追加」または「アプリをインストール」を選ぶ', 'Choose “Add to Home screen” or “Install app”'));
+  d.innerHTML = `<div style="max-width:420px;width:100%;background:#13285a;border:2px solid #ffd23f;border-radius:20px;padding:22px 20px 18px;text-align:center">`
+    + `<div style="font-size:22px;font-weight:900;color:#ffd23f;margin-bottom:4px">${L('ホーム画面に追加', 'Add to Home Screen')}</div>`
+    + `<div style="font-size:13px;color:#cfe0ff;margin-bottom:8px">${L('アイコンから1タップで遊べるようになります', 'Play with one tap from your home screen')}</div>`
+    + body + `<button id="igClose" style="margin-top:14px;padding:12px 40px;font-size:17px;font-weight:900;border:0;border-radius:14px;background:#ffd23f;color:#1b2a4a;font-family:inherit">${L('OK', 'OK')}</button></div>`;
+  document.body.appendChild(d);
+  d.addEventListener('pointerdown', e => e.stopPropagation());
+  d.querySelector('#igClose').addEventListener('click', e => { e.stopPropagation(); d.remove(); st = prev; });
+}
+function drawInstallPill(x, y) {   // 中心 x、上端 y に小さなボタンを描く
+  const lb = L('📲 ホーム画面に追加', '📲 Add to Home Screen');
+  ctx.save(); ctx.font = `800 14px ${FONT}`; const w = ctx.measureText(lb).width + 30, h = 36;
+  installBtn = {x: x - w / 2, y, w, h};
+  ctx.fillStyle = 'rgba(10,30,60,.6)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - w / 2, y, w, h, 18) : ctx.rect(x - w / 2, y, w, h); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(lb, x, y + h / 2 + 1);
+  ctx.restore();
+}
 // ---- オープニング画面 ----
 let splashT = 0, langBtns = [], startBtn = null, backBtn = null;
 const ICON = new Image();
@@ -62,7 +113,7 @@ function drawSplash() {
     const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#0b1d4a'); g.addColorStop(1, '#1b4aa8');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore();
   }
-  const BELOW = 290, FOOT = 78;   // アイコンの下に並ぶもの（タイトル〜無料の一文）の高さ／クレジットの高さ
+  const BELOW = 290 + (canInstall() && !(W > H * 1.25) ? 46 : 0), FOOT = 78;   // アイコンの下に並ぶもの（タイトル〜無料の一文）の高さ／クレジットの高さ
   let isz = Math.round(Math.min(m * (wide ? 0.42 : 0.46), 260));
   if (!wide) isz = Math.max(90, Math.min(isz, H - FOOT - BELOW - 30));   // 背の低い画面では縮めて重ならないようにする
   const cx = wide ? W * 0.3 : W / 2, cy = wide ? H / 2 - 10 : Math.max(20 + isz / 2, Math.min(H * 0.36 - 20, H - FOOT - BELOW - isz / 2));
@@ -201,6 +252,8 @@ function drawSplash() {
     ty += shh + 22;
     ctx.fillStyle = '#b6ff6a'; ctx.font = `800 ${LANG === 'en' ? 12 : 13}px ${FONT}`;
     ctx.fillText(L('完全無料・広告なし・アプリ内課金なし', '100% FREE · No ads · No in-app purchases'), rx, ty);
+    installBtn = null;
+    if (canInstall()) drawInstallPill(wide ? cx : rx, wide ? Math.min(cy + isz / 2 + 14, H - 112) : ty + 16);
     // クレジット（横画面ではアイコンの下）
     const crx = wide ? cx : W / 2;
     ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.font = `700 12px ${FONT}`; ctx.letterSpacing = '1px';
@@ -434,11 +487,13 @@ function down(x, y) {
     if (x === undefined) { chooseLang(LANG); return; }
     for (const b of langBtns) if (hit(b, x, y)) { if (b.lang !== LANG) { toggleLang(); tone(600, 800, 0.05, 'triangle', 0.06); } return; }
     if (startBtn && hit(startBtn, x, y)) { chooseLang(LANG); return; }
+    if (installBtn && hit(installBtn, x, y)) { doInstall(); return; }
     return;
   }
   if (st === 'title') {
     if (x === undefined) { startGame('normal'); return; }
-    if (backBtn && hit(backBtn, x, y)) { st = 'splash'; splashT = INTRO; return; }   // 言語選択の画面へ戻る（演出は飛ばす）
+    if (backBtn && hit(backBtn, x, y)) { st = 'splash'; splashT = INTRO; return; }
+    if (installBtn && hit(installBtn, x, y)) { doInstall(); return; }   // 言語選択の画面へ戻る（演出は飛ばす）
     for (const b of titleBtns) if (hit(b, x, y)) { b.act(); return; }
     return;
   }
@@ -1309,8 +1364,10 @@ function drawOverlay() {
     ctx.beginPath(); ctx.roundRect ? ctx.roundRect(backBtn.x, backBtn.y, bw, 40, 20) : ctx.rect(backBtn.x, backBtn.y, bw, 40); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(lb, backBtn.x + bw / 2, backBtn.y + 21);
+    installBtn = null;
+    if (canInstall()) drawInstallPill(W / 2, 14);   // ホーム画面に追加（タイトルでは上の空いた所に）
   }
-  txt('v1.5.2', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
+  txt('v1.6', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
 }
 function draw() {
   drawBackground();

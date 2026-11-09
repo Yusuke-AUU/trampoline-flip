@@ -1,10 +1,10 @@
 {
   "name": "TRAMPOLINE FLIP",
   "short_name": "FLIP",
-  "description": "長押しだけで宙返り。10本の演技をビタ止めで決めろ！",
-  "start_url": "./",
-  "display": "fullscreen",
-  "orientation": "portrait",
+  "description": "完全無料！長押しだけで宙返り。10本の演技をビタ止めで決めろ！ / 100% FREE trampoline game.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
   "background_color": "#0f2a5e",
   "theme_color": "#0f2a5e",
   "icons": [
@@ -18,5 +18,7 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ]
+  ],
+  "scope": "/",
+  "id": "/"
 }
