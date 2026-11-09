@@ -444,7 +444,7 @@ function down(x, y) {
   }
   if (st === 'over') {
     if (overT <= 0.6) return;
-    if (x === undefined) { st = 'title'; return; }
+    if (x === undefined) { startGame(mode); return; }   // スペースキーでもう一度
     pressedBtn = resultBtns.find(b => hit(b, x, y)) || null;
     return;
   }
@@ -1268,15 +1268,32 @@ function drawOverlay() {
     if (el.length === 0) lines.push([L('技なし', 'No skills'), fs * 0.8, '#dfefff']);
     el.forEach((e, i) => lines.push([`${i + 1}. ${e.name}　D${f1(e.d)}　E${e.ded ? '−' + f1(e.ded) : '±0'}${e.hd ? '　H−' + f1(e.hd) : ''}`, fs * 0.78, e.d > 0 ? '#ffffff' : '#9fb6cc']));
     const bh1 = 50, bh2 = 42;
-    const pb = panel(lines, bh1 + 8 + bh2 + 12 + 26);
-    const y1 = Math.min(pb.y + pb.h + 10, H - bh1 - 8 - bh2 - 26), gap = 8, w3 = (pb.w - gap * 2) / 3;
+    const side = wideTitle();   // 横長の画面：結果は左、ボタンは右に縦並び
+    const pb = side ? panel(lines, 0, true) : panel(lines, bh1 + 8 + bh2 + 8 + bh1 + 12 + 66);   // 下の♪ボタンと重ならないように余白を取る
+    const gap = 8;
+    const col = side ? {x: pb.x + pb.w + 16, w: Math.min(280, W - (pb.x + pb.w + 16) - 16)} : {x: pb.x, w: pb.w};
+    const y1 = side ? Math.max(60, (H - (bh1 * 2 + bh2 + gap * 2)) / 2) : Math.min(pb.y + pb.h + 10, H - bh1 - 8 - bh2 - 8 - bh1 - 66);
+    const w3 = (col.w - gap * 2) / 3;
+    pb.x = col.x; pb.w = col.w;
     resultBtns = [
       {x: pb.x, y: y1, w: pb.w, h: bh1, act: shareNative, label: L('結果をシェア', 'SHARE RESULT'), bg: '#ffd23f', fg: '#1b2a4a'},
       {x: pb.x, y: y1 + bh1 + gap, w: w3, h: bh2, act: shareX, label: 'X', bg: '#000000', fg: '#ffffff'},
       {x: pb.x + w3 + gap, y: y1 + bh1 + gap, w: w3, h: bh2, act: shareLINE, label: 'LINE', bg: '#06c755', fg: '#ffffff'},
       {x: pb.x + (w3 + gap) * 2, y: y1 + bh1 + gap, w: w3, h: bh2, act: () => { st = 'title'; }, label: L('タイトルへ', 'TITLE'), bg: '#ffffff', fg: '#1b2a4a'},
+      {x: pb.x, y: y1 + bh1 + gap + bh2 + gap, w: pb.w, h: bh1, act: () => startGame(mode), label: L('もう一度、跳ぶ！ ▶', 'JUMP AGAIN! ▶'), bg: '#e8283a', fg: '#ffffff', retry: true},
     ];
-    if (overT > 0.6) for (const b of resultBtns) button(b, b.label, '', b.bg, b.fg);
+    if (overT > 0.6) for (const b of resultBtns) {
+      if (b.retry) {   // もう一度：脈打つ赤いボタン
+        const pul = 1 + 0.03 * Math.sin(time * 5);
+        ctx.save(); ctx.translate(b.x + b.w / 2, b.y + b.h / 2); ctx.scale(pul, pul);
+        ctx.shadowColor = 'rgba(255,80,60,.6)'; ctx.shadowBlur = 18;
+        const g2 = ctx.createLinearGradient(0, -b.h / 2, 0, b.h / 2); g2.addColorStop(0, '#ff6a4d'); g2.addColorStop(1, '#d9283a');
+        ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-b.w / 2, -b.h / 2, b.w, b.h, 12) : ctx.rect(-b.w / 2, -b.h / 2, b.w, b.h);
+        ctx.fillStyle = g2; ctx.fill(); ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff'; ctx.font = `900 ${Math.min(22, b.h * 0.42)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(b.label, 0, 1); ctx.restore();
+      } else button(b, b.label, '', b.bg, b.fg);
+    }
   }
   ctx.save(); ctx.globalAlpha = 0.85; ctx.fillStyle = 'rgba(10,30,60,.55)';
   ctx.beginPath(); ctx.arc(34, H - 34, 20, 0, TAU); ctx.fill(); ctx.restore();
@@ -1293,7 +1310,7 @@ function drawOverlay() {
     ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(lb, backBtn.x + bw / 2, backBtn.y + 21);
   }
-  txt('v1.5.1', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
+  txt('v1.5.2', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
 }
 function draw() {
   drawBackground();
