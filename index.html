@@ -62,8 +62,10 @@ function drawSplash() {
     const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#0b1d4a'); g.addColorStop(1, '#1b4aa8');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore();
   }
-  const isz = Math.round(Math.min(m * (wide ? 0.42 : 0.46), 260));
-  const cx = wide ? W * 0.3 : W / 2, cy = wide ? H / 2 - 10 : H * 0.36 - 20;
+  const BELOW = 290, FOOT = 78;   // アイコンの下に並ぶもの（タイトル〜無料の一文）の高さ／クレジットの高さ
+  let isz = Math.round(Math.min(m * (wide ? 0.42 : 0.46), 260));
+  if (!wide) isz = Math.max(90, Math.min(isz, H - FOOT - BELOW - 30));   // 背の低い画面では縮めて重ならないようにする
+  const cx = wide ? W * 0.3 : W / 2, cy = wide ? H / 2 - 10 : Math.max(20 + isz / 2, Math.min(H * 0.36 - 20, H - FOOT - BELOW - isz / 2));
   // ① 0〜1.6秒：金色の弧が宙返りのように一周し、光の粒が舞う
   if (t < 2.4) {
     const R = m * 0.26, k = ease(t / 1.4), fade = 1 - ease((t - 1.7) / 0.7);
@@ -1291,7 +1293,7 @@ function drawOverlay() {
     ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(lb, backBtn.x + bw / 2, backBtn.y + 21);
   }
-  txt('v1.5', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
+  txt('v1.5.1', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
 }
 function draw() {
   drawBackground();
