@@ -1,0 +1,1317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>TRAMPOLINE FLIP</title>
+<meta name="description" content="100% free – no ads, no in-app purchases. Hold to flip, release to open. A competition trampoline game with real FIG-style D/E/T/H scoring: 10-skill routines, NORMAL and HARD (30 skills) modes.">
+<meta name="theme-color" content="#0f2a5e">
+<link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="FLIP">
+<!-- for SNS sharing -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="TRAMPOLINE FLIP">
+<meta property="og:description" content="100% FREE! Hold to flip. Nail a 10-skill routine and stick the landing!">
+<meta property="og:image" content="https://trampoline-flip.netlify.app/og-image-en.png">
+<meta property="og:url" content="https://trampoline-flip.netlify.app/en/">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#e9dfc6;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+canvas{display:block;width:100vw;height:100vh;height:100dvh;touch-action:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(() => {
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const FONT = '"Hiragino Sans","Hiragino Kaku Gothic ProN","Meiryo",sans-serif';
+// ---- 言語（日本語／English）：?lang= ＞ 保存した選択 ＞ /en/ のページ ＞ 端末の言語 ----
+let LANG = (() => {
+  const q = new URLSearchParams(location.search).get('lang');
+  if (q === 'en' || q === 'ja') return q;
+  try { const v = localStorage.getItem('tflip_lang'); if (v === 'en' || v === 'ja') return v; } catch (e) {}
+  if (/\/en(\/|\/index\.html)?$/.test(location.pathname)) return 'en';
+  return /^ja/i.test(navigator.language || '') ? 'ja' : 'en';
+})();
+const L = (ja, en) => LANG === 'en' ? en : ja;
+document.documentElement.lang = LANG;
+// ---- オープニング画面 ----
+let splashT = 0, langBtns = [], startBtn = null, backBtn = null;
+const ICON = new Image();
+ICON.src = 'data:image/webp;base64,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';   // アイコンを埋め込み（どこで開いても表示される）
+function chooseLang(l) {
+  if (l !== LANG) toggleLang(); else { try { localStorage.setItem('tflip_lang', LANG); } catch (e) {} }
+  st = 'title'; tone(700, 1100, 0.08, 'triangle', 0.08);
+}
+const INTRO = 4.2;   // オープニング演出の長さ（秒）。タップで飛ばせる
+const ease = t => 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3);
+const back = t => { t = Math.max(0, Math.min(1, t)); const c = 1.7; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+function drawSplash() {
+  const t = splashT, m = Math.min(W, H), wide = W > H * 1.25;
+  // 背景：黒 → 濃紺のグラデーションへ
+  ctx.fillStyle = '#02060f'; ctx.fillRect(0, 0, W, H);
+  const bgA = ease((t - 2.0) / 0.9);
+  if (bgA > 0) {
+    ctx.save(); ctx.globalAlpha = bgA;
+    const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#0b1d4a'); g.addColorStop(1, '#1b4aa8');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore();
+  }
+  const isz = Math.round(Math.min(m * (wide ? 0.42 : 0.46), 260));
+  const cx = wide ? W * 0.3 : W / 2, cy = wide ? H / 2 - 10 : H * 0.36 - 20;
+  // ① 0〜1.6秒：金色の弧が宙返りのように一周し、光の粒が舞う
+  if (t < 2.4) {
+    const R = m * 0.26, k = ease(t / 1.4), fade = 1 - ease((t - 1.7) / 0.7);
+    ctx.save(); ctx.globalAlpha = fade; ctx.lineCap = 'round';
+    const head = -Math.PI / 2 + k * Math.PI * 2.2;
+    for (let i = 0; i < 26; i++) {   // 尾を引く弧
+      const a0 = head - i * 0.07, a1 = a0 - 0.08;
+      ctx.strokeStyle = `rgba(255,${200 - i * 3},${60 - i},${(1 - i / 26) * 0.95})`;
+      ctx.lineWidth = Math.max(1, (1 - i / 26) * m * 0.03);
+      ctx.beginPath(); ctx.arc(W / 2, H / 2, R, a1, a0); ctx.stroke();
+    }
+    const hx = W / 2 + R * Math.cos(head), hy = H / 2 + R * Math.sin(head);   // 先端の光
+    const hg = ctx.createRadialGradient(hx, hy, 0, hx, hy, m * 0.09);
+    hg.addColorStop(0, 'rgba(255,250,220,1)'); hg.addColorStop(1, 'rgba(255,210,63,0)');
+    ctx.fillStyle = hg; ctx.fillRect(hx - m * 0.1, hy - m * 0.1, m * 0.2, m * 0.2);
+    for (let i = 0; i < 40; i++) {   // 光の粒
+      const s0 = (i * 97.13) % 1, ang = i * 2.4 + t * (0.3 + s0), r = R * (0.6 + s0 * 0.9) + t * 20 * s0;
+      const tw = 0.5 + 0.5 * Math.sin(t * 9 + i);
+      ctx.fillStyle = `rgba(255,${220 + (i % 3) * 10},150,${0.6 * tw * Math.min(1, t * 2)})`;
+      ctx.beginPath(); ctx.arc(W / 2 + r * Math.cos(ang), H / 2 + r * Math.sin(ang), 1 + s0 * 2, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+  // ② 0.9〜2.3秒：AUU, Inc. presents（光の帯が文字を横切る）
+  const pa = ease((t - 0.9) / 0.5) * (1 - ease((t - 1.9) / 0.4));
+  if (pa > 0) {
+    ctx.save(); ctx.globalAlpha = pa; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const fs1 = Math.min(44, m * 0.1);
+    const oc = drawSplash.oc || (drawSplash.oc = document.createElement('canvas')), ow = Math.ceil(fs1 * 7), oh = Math.ceil(fs1 * 1.6);
+    oc.width = ow; oc.height = oh; const o = oc.getContext('2d');   // 文字だけの別キャンバスに光の帯を重ねる
+    o.font = `900 ${fs1}px ${FONT}`; o.letterSpacing = '4px'; o.textAlign = 'center'; o.textBaseline = 'middle';
+    o.fillStyle = '#ffffff'; o.fillText('AUU, Inc.', ow / 2, oh / 2);
+    const sx0 = ((t - 0.9) / 1.0) * ow;
+    o.globalCompositeOperation = 'source-atop';
+    const sg = o.createLinearGradient(sx0 - 40, 0, sx0 + 40, 0);
+    sg.addColorStop(0, 'rgba(255,210,63,0)'); sg.addColorStop(0.5, 'rgba(255,225,120,1)'); sg.addColorStop(1, 'rgba(255,210,63,0)');
+    o.fillStyle = sg; o.fillRect(0, 0, ow, oh);
+    ctx.drawImage(oc, W / 2 - ow / 2, H / 2 - 8 - oh / 2);
+    ctx.font = `600 ${Math.round(fs1 * 0.32)}px ${FONT}`; ctx.letterSpacing = '6px';
+    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fillText('PRESENTS', W / 2, H / 2 + fs1 * 0.75);
+    ctx.letterSpacing = '0px'; ctx.restore();
+  }
+  // ③ 2.2秒〜：回る光線の上にアイコンが弾んで登場
+  const ia = ease((t - 2.2) / 0.4);
+  if (ia > 0) {
+    ctx.save(); ctx.globalAlpha = ia * 0.5; ctx.translate(cx, cy);   // 光線
+    ctx.rotate(t * 0.25);
+    for (let i = 0; i < 12; i++) {
+      ctx.rotate(TAU / 12);
+      const lg = ctx.createLinearGradient(0, 0, 0, -m * 0.6);
+      lg.addColorStop(0, 'rgba(140,210,255,.55)'); lg.addColorStop(1, 'rgba(140,210,255,0)');
+      ctx.fillStyle = lg; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-m * 0.05, -m * 0.6); ctx.lineTo(m * 0.05, -m * 0.6); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+    const sc = back((t - 2.2) / 0.55), sz = isz * sc;
+    ctx.save(); ctx.globalAlpha = ia;
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 10;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx - sz / 2, cy - sz / 2, sz, sz, sz * 0.22) : ctx.rect(cx - sz / 2, cy - sz / 2, sz, sz);
+    ctx.fillStyle = '#1565d8'; ctx.fill(); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx - sz / 2, cy - sz / 2, sz, sz, sz * 0.22) : ctx.rect(cx - sz / 2, cy - sz / 2, sz, sz); ctx.clip();
+    if (ICON.complete && ICON.naturalWidth) ctx.drawImage(ICON, cx - sz / 2, cy - sz / 2, sz, sz);
+    const gl = (t - 2.7) / 0.6;   // アイコンを横切る光
+    if (gl > 0 && gl < 1) {
+      const gx = cx - sz + gl * sz * 2, gg = ctx.createLinearGradient(gx - sz * 0.25, 0, gx + sz * 0.25, 0);
+      gg.addColorStop(0, 'rgba(255,255,255,0)'); gg.addColorStop(0.5, 'rgba(255,255,255,.55)'); gg.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = gg; ctx.fillRect(cx - sz / 2, cy - sz / 2, sz, sz);
+    }
+    ctx.restore(); ctx.restore();
+  }
+  // FREEバッジ（アイコンの右上）
+  const fb = (t - 3.0) / 0.45;
+  if (fb > 0) {
+    const r = isz * 0.17, bx = cx + isz / 2 - r * 0.05, by = cy - isz / 2 + r * 0.05;
+    ctx.save(); ctx.translate(bx, by); ctx.rotate(-0.26); ctx.scale(back(fb), back(fb));
+    ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 4;
+    ctx.beginPath();
+    for (let i = 0; i < 24; i++) { const a = i * TAU / 24, rr = i % 2 ? r * 0.86 : r; ctx.lineTo(rr * Math.cos(a), rr * Math.sin(a)); }
+    ctx.closePath(); ctx.fillStyle = '#e8283a'; ctx.fill(); ctx.shadowBlur = 0;
+    ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, r * 0.74, 0, TAU); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `900 ${Math.round(r * 0.52)}px ${FONT}`; ctx.fillText('FREE', 0, 1);
+    ctx.restore();
+  }
+  // ④ 2.7秒〜：タイトルの文字が1文字ずつ落ちてくる
+  const rx = wide ? W * 0.68 : W / 2;
+  let ty = wide ? H * 0.3 : cy + isz / 2 + 52;
+  const tfs = Math.min(40, Math.max(26, (wide ? W * 0.4 : W) / 11));
+  const title = 'TRAMPOLINE FLIP';
+  ctx.save(); ctx.font = `900 ${tfs}px ${FONT}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  const tw = ctx.measureText(title).width; let x = rx - tw / 2;
+  for (let i = 0; i < title.length; i++) {
+    const ch = title[i], w = ctx.measureText(ch).width, lt = (t - 2.7 - i * 0.04) / 0.35;
+    if (lt > 0) {
+      const yo = (1 - back(lt)) * -tfs * 1.2;
+      ctx.globalAlpha = ease(lt);
+      ctx.lineWidth = Math.max(3, tfs * 0.14); ctx.strokeStyle = '#0a1a3a'; ctx.lineJoin = 'round';
+      ctx.strokeText(ch, x, ty + yo); ctx.fillStyle = '#ffd23f'; ctx.fillText(ch, x, ty + yo);
+    }
+    x += w;
+  }
+  ctx.restore();
+  // ⑤ 3.5秒〜：言語の選択とクレジット
+  const la = ease((t - 3.5) / 0.6);
+  langBtns = []; startBtn = null;
+  if (la > 0) {
+    ctx.save(); ctx.globalAlpha = la;
+    ty += tfs * 1.4;
+    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = `700 13px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('L A N G U A G E', rx, ty);
+    ty += 22 + (1 - la) * 10;
+    const bw = Math.min(150, (wide ? W * 0.36 : W - 60) / 2 - 6), bh = 52, gap = 12;
+    langBtns = [{lang: 'ja', label: '日本語', x: rx - bw - gap / 2, y: ty, w: bw, h: bh}, {lang: 'en', label: 'English', x: rx + gap / 2, y: ty, w: bw, h: bh}];
+    for (const b of langBtns) {
+      const on = b.lang === LANG;
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(b.x, b.y, b.w, b.h, 26) : ctx.rect(b.x, b.y, b.w, b.h);
+      ctx.fillStyle = on ? '#ffd23f' : 'rgba(255,255,255,.08)'; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = on ? '#ffd23f' : 'rgba(255,255,255,.7)'; ctx.stroke();
+      ctx.fillStyle = on ? '#1b2a4a' : '#fff'; ctx.font = `900 19px ${FONT}`;
+      ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1);
+    }
+    // スタートボタン（脈打つ）
+    ty += bh + 16;
+    const sw = bw * 2 + gap, shh = 58, pul = 1 + 0.035 * Math.sin(t * 5);
+    startBtn = {x: rx - sw / 2, y: ty, w: sw, h: shh};
+    ctx.save(); ctx.translate(rx, ty + shh / 2); ctx.scale(pul, pul);
+    ctx.shadowColor = 'rgba(255,80,60,.6)'; ctx.shadowBlur = 22;
+    const sg2 = ctx.createLinearGradient(0, -shh / 2, 0, shh / 2); sg2.addColorStop(0, '#ff6a4d'); sg2.addColorStop(1, '#d9283a');
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-sw / 2, -shh / 2, sw, shh, 29) : ctx.rect(-sw / 2, -shh / 2, sw, shh);
+    ctx.fillStyle = sg2; ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff'; ctx.font = `900 ${LANG === 'en' ? 24 : 22}px ${FONT}`;
+    ctx.fillText(L('さあ、跳ぼう！ ▶', 'LET\'S JUMP! ▶'), 0, 1);
+    ctx.restore();
+    ty += shh + 22;
+    ctx.fillStyle = '#b6ff6a'; ctx.font = `800 ${LANG === 'en' ? 12 : 13}px ${FONT}`;
+    ctx.fillText(L('完全無料・広告なし・アプリ内課金なし', '100% FREE · No ads · No in-app purchases'), rx, ty);
+    // クレジット（横画面ではアイコンの下）
+    const crx = wide ? cx : W / 2;
+    ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.font = `700 12px ${FONT}`; ctx.letterSpacing = '1px';
+    ctx.fillText('Presented by AUU, Inc.', crx, H - 58);
+    ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.font = `600 12px ${FONT}`;
+    ctx.fillText('Produced by Yusuke Tanaka, CEO', crx, H - 40);
+    ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.font = `600 11px ${FONT}`;
+    ctx.fillText('© 2026 AUU, Inc.', crx, H - 20); ctx.letterSpacing = '0px';
+    ctx.restore();
+  }
+}
+function toggleLang() {
+  LANG = LANG === 'en' ? 'ja' : 'en'; document.documentElement.lang = LANG;
+  try { localStorage.setItem('tflip_lang', LANG); } catch (e) {}
+  const sl = document.getElementById('skillList'); if (sl) sl.remove();
+}
+let W, H, DPR, S, bedY, cx;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const r = cv.getBoundingClientRect();          // 実際に表示されているサイズで描く（スマホのアドレスバー対策）
+  W = Math.round(r.width) || window.innerWidth; H = Math.round(r.height) || window.innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  S = Math.min(H / 10.8, W / 6.0);       // px per meter
+  bedY = H - 2.0 * S;                      // screen y of bed (world y=0) when camera at 0
+  cx = W / 2;
+}
+addEventListener('resize', resize); resize();
+if (window.visualViewport) visualViewport.addEventListener('resize', resize);
+addEventListener('orientationchange', () => setTimeout(resize, 300));
+function syncSize() { const r = cv.getBoundingClientRect(); if (Math.round(r.width) !== W || Math.round(r.height) !== H) resize(); }
+
+// ---- 定数 ----
+const G = 11;          // 重力 m/s^2
+const TW = 10.5;       // 抱え込み時の回転速度 rad/s
+const MAXH = 6.5;      // 最高到達（m）
+const CT = 0.26;       // 接地時間 s
+const GROUND = -1.15;  // 床の高さ（競技用トランポリンの高さ 約1.15m）
+const TAU = Math.PI * 2;
+const na = a => a - TAU * Math.round(a / TAU);
+
+// ---- 状態 ----
+let st = 'splash', p, holding = false, time = 0;
+let score = 0, best = 0, jumps = 0, totalFlips = 0, combo = 0, maxCombo = 0;
+let pops = [], camY = 0, bedDepth = 0, crashT = 0, overT = 0, newBest = false;
+let el = [], endReason = '', lastDir = 0;
+const SHAPES = ['L', 'P', 'T'];   // 伸身 → 屈身 → 抱え込み の順に自動で変わる
+const SHAPE_JA = {L: '伸身', P: '屈身', T: '抱え込み'};
+let dirCount = {1: 0, '-1': 0};   // 方向ごとに決めた宙返りの本数   // lastDir: 直前の技の方向（+1前/-1後）   // 演技（10本）の記録
+let mode = 'normal';   // 'normal'＝技6種類 ／ 'hard'＝30技
+const bestKey = () => `tflip_best2_${mode}`;   // 採点ルール変更（v1.3）で記録をリセット
+function loadBest() { try { best = +localStorage.getItem(bestKey()) || 0; } catch (e) { best = 0; } }
+loadBest();
+
+// ---- サウンド ----
+let AC = null, muted = false, whoosh = null;
+try { muted = localStorage.getItem('tflip_mute') === '1'; } catch (e) {}
+function initAudio() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    const len = AC.sampleRate, buf = AC.createBuffer(1, len, AC.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = AC.createBufferSource(); src.buffer = buf; src.loop = true;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = 0.9;
+    const g = AC.createGain(); g.gain.value = 0;
+    src.connect(bp); bp.connect(g); g.connect(AC.destination); src.start();
+    whoosh = {g, bp};
+  } catch (e) { AC = null; }
+}
+function tone(f0, f1, dur, type = 'sine', vol = 0.25, delay = 0) {
+  if (!AC || muted) return;
+  const t = AC.currentTime + delay, o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+const sfx = {
+  bounce: v => tone(150 + v * 5, 70, 0.22, 'sine', 0.35),
+  good: () => { tone(660, 660, 0.12, 'triangle', 0.14); tone(880, 880, 0.16, 'triangle', 0.14, 0.08); },
+  perfect: () => [660, 880, 1320].forEach((f, i) => tone(f, f, 0.2, 'triangle', 0.14, i * 0.07)),
+  drop: () => tone(120, 55, 0.32, 'sine', 0.45),
+  twist: () => tone(500, 1100, 0.18, 'triangle', 0.06),
+  fail: () => { tone(220, 45, 0.55, 'sawtooth', 0.12); tone(90, 40, 0.4, 'sine', 0.4, 0.05); },
+};
+
+const clouds = Array.from({length: 5}, (_, i) => ({x: Math.random(), y: 0.08 + Math.random() * 0.35, s: 0.6 + Math.random() * 0.8, v: 0.004 + Math.random() * 0.006}));
+
+function resetPlayer() {
+  p = {x: 0, vx: 0, y: 0.9, vy: 0, th: 0, w: 0, tuck: 0, crouch: 0, contact: true, contactT: 0, D: 0.3,
+       airT: 0, tx: 0, pos: 0, nextSide: -1, dir: 0, lean: 0, leanK: 1, leanPh: 0, bounceN: 0, apex: 0, flail: 0, drop: 0, recover: false, face: 1, twist: -1, twisted: false, final: false, finalJump: false, stick: false, stickT: 0, opened: false, openK: 0, openTarget: 0, wasHolding: false, rotFace: 1};
+}
+function startGame(m) {
+  if (m) { mode = m; loadBest(); }
+  tutOn = !tutDone; tutTip = null;
+  st = 'play'; score = 0; jumps = 0; totalFlips = 0; combo = 0; maxCombo = 0; pops = []; newBest = false; el = []; endReason = ''; lastDir = 0; dirCount = {1: 0, '-1': 0}; skillCount = {};
+  resetPlayer();
+}
+resetPlayer();
+
+// ---- 姿勢 ----
+const dirv = (a, l) => [Math.sin(a) * l, Math.cos(a) * l]; // a=0 下, π 上, 正=前方
+const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const P_L = {to: Math.PI, ua: Math.PI - 0.15, fa: Math.PI - 0.1, th: 0, sh: 0};
+const P_T = {to: Math.PI - 0.4, ua: 0.8, fa: 0.15, th: 1.79, sh: -0.45};          // 抱え込み
+const P_P = {to: 0.78, ua: -0.55, fa: -0.85, th: 0.1, sh: 0.1};                 // 屈身（脚を伸ばしたまま上体を脚に折りたたむ）
+const P_S = {to: Math.PI, ua: 0.12, fa: 0.06, th: -0.06, sh: -0.03};             // 伸身（まっすぐ、腕は体側）
+const SHAPE_POSE = {T: P_T, P: P_P, L: P_S};
+const nextShape = d => SHAPES[(dirCount[d] || 0) % 3];
+// ---- 技の一覧：回転数ごとに、使うたびに1本目→5本目の順で自動で切り替わる ----
+// h：各宙返りのひねり（1/2回単位）、s：姿勢（L伸身／P屈身／T抱え込み）
+const SKILLS = {
+  1: {   // 前方
+    1: [{n: 'レイアウトバラニー', h: [1], s: 'L'}, {n: 'パイクバラニー', h: [1], s: 'P'}, {n: 'タックバラニー', h: [1], s: 'T'}, {n: 'ルディー', h: [3], s: 'L'}, {n: 'ランディー', h: [5], s: 'L'}],
+    2: [{n: 'フルイン・ランディー', h: [2, 5], s: 'L'}, {n: 'フルイン・ルディー', h: [2, 3], s: 'L'}, {n: 'フルイン・バラニー', h: [2, 1], s: 'L'}, {n: 'ルディーアウト', h: [0, 3], s: 'P'}, {n: 'バラニーアウト', h: [0, 1], s: 'P'}],
+    3: [{n: 'フルイン・トリフィス・バラニー', h: [2, 0, 1], s: 'P'}, {n: 'トリフィス・ルディー', h: [0, 0, 3], s: 'P'}, {n: 'トリフィス・バラニー', h: [0, 0, 1], s: 'P'}, {n: 'フルイン・トリフィス・バラニー', h: [2, 0, 1], s: 'T'}, {n: 'トリフィス・ルディー', h: [0, 0, 3], s: 'T'}],
+  },
+  '-1': {   // 後方
+    1: [{n: 'レイアウトバック', h: [0], s: 'L'}, {n: 'パイクバック', h: [0], s: 'P'}, {n: 'タックバック', h: [0], s: 'T'}, {n: 'フルツイスト', h: [2], s: 'L'}, {n: 'ダブルツイスト', h: [4], s: 'L'}],
+    2: [{n: 'ダブルイン・トリプル', h: [4, 2], s: 'L'}, {n: 'ダブルイン・ダブル', h: [4, 0], s: 'L'}, {n: 'フルイン・ダブル', h: [2, 0], s: 'L'}, {n: 'ハーフイン・ハーフアウト', h: [1, 1], s: 'P'}, {n: 'フルイン・フルアウト', h: [2, 2], s: 'L'}],
+    3: [{n: 'ハーフイン・トリフィス・ルディー', h: [1, 0, 3], s: 'P'}, {n: 'ハーフイン・トリフィス・ルディー', h: [1, 0, 3], s: 'T'}, {n: 'ハーフイン・トリフィス・バラニー', h: [1, 0, 1], s: 'P'}, {n: 'ハーフイン・トリフィス・バラニー', h: [1, 0, 1], s: 'T'}, {n: 'フルイン・フル・フルアウト', h: [2, 2, 2], s: 'L'}],
+  },
+};
+let skillCount = {};   // 「方向_回転数」ごとに決めた本数
+const SHAPE_SYM = {T: 'o', P: '<', L: '/'};
+const numeric = (n, h, sh) => `${n * 4} ${h.join(' ')} ${SHAPE_SYM[sh]}`;
+// 踏み切ってから押した瞬間の残り時間で、何回宙返りを狙うかを決める
+function planSkill() {
+  if (mode === 'normal') {   // NORMAL：姿勢は方向ごとに L→P→T、前方は開いてから1/2ひねり
+    p.plan = {normal: true, s: nextShape(p.dir)}; p.shape = p.plan.s; return;
+  }
+  const t = timeToLand();
+  let n = 1;
+  for (let k = 3; k >= 1; k--) { if (0.12 + (TAU * k - Math.PI - 0.26) / TW + 0.25 <= t) { n = k; break; } }
+  const key = `${p.dir}_${n}`, list = SKILLS[p.dir][n], idx = (skillCount[key] || 0) % list.length;
+  const sk = list[idx];
+  p.plan = {n, h: sk.h, s: sk.s, name: sk.n};
+  p.shape = sk.s;
+}
+// ひねりの進み具合（1/2回単位）。各宙返りの回転に合わせて入る（最後の宙返りは開いてから）
+function halvesDone() {
+  if (!p.plan) return 0;
+  if (p.plan.normal) {
+    if (p.dir < 0 || !p.opened) return 0;
+    const ph = p.th * p.dir, f = Math.min(1, Math.max(0, (ph - p.openPhi) / Math.max(0.3, p.openTarget * p.dir - p.openPhi - 0.25)));
+    return f * f * (3 - 2 * f);
+  }
+  const phi = Math.max(0, p.th * p.dir); let tot = 0;
+  const H = p.plan.h;
+  for (let k = 0; k < H.length; k++) {
+    if (!H[k]) continue;
+    const last = k === H.length - 1;
+    const a0 = TAU * (k + (last ? 0.45 : 0.15)), a1 = TAU * (k + (last ? 0.95 : 0.85));
+    const f = Math.min(1, Math.max(0, (phi - a0) / (a1 - a0)));
+    tot += H[k] * f * f * (3 - 2 * f);
+  }
+  return tot;
+}
+function skillName(n, h, sh, dir) {
+  if (LANG === 'en') return numeric(n, h, sh);   // 英語版は数字表記（FIG numeric）
+  if (p.plan && p.plan.normal) return fullName(n * dir, sh);
+  if (p.plan && n === p.plan.n) return p.plan.name + (n >= 2 ? `（${sh}）` : '');
+  return `${dir > 0 ? '前方' : '後方'}${n}回宙返り ${numeric(n, h, sh)}`;
+}
+const P_C = {to: Math.PI - 0.3, ua: -0.5, fa: -0.3, th: 0.9, sh: -0.75};
+function pose() {
+  const o = {};
+  const TG = SHAPE_POSE[p.shape] || P_T;
+  for (const k in P_L) o[k] = P_L[k] + (TG[k] - P_L[k]) * p.tuck + (P_C[k] - P_L[k]) * p.crouch;
+  if (p.openK > 0.001) for (const k in P_L) o[k] += (P_S[k] - o[k]) * p.openK;   // 開き：体がビンと伸びる
+  if (p.flail > 0.01) {
+    const f = p.flail, t = time;
+    o.ua += f * 1.6 * Math.sin(t * 13); o.fa += f * 1.1 * Math.sin(t * 17 + 1);
+    o.th += f * 0.9 * Math.sin(t * 11 + 2); o.sh += f * 0.9 * Math.sin(t * 15);
+    o.to += f * 0.35 * Math.sin(t * 9);
+  }
+  return o;
+}
+function joints(o, off = {}) {
+  const hip = [0, 0];
+  const sh = dirv(o.to, 0.55);
+  const head = dirv(o.to, 0.72);
+  const elbow = add(sh, dirv(o.ua + (off.ua || 0), 0.3));
+  const hand = add(elbow, dirv(o.fa + (off.ua || 0), 0.28));
+  const knee = dirv(o.th + (off.th || 0), 0.45);
+  const foot = add(knee, dirv(o.sh + (off.sh || 0), 0.45));
+  return {hip, sh, head, elbow, hand, knee, foot};
+}
+// 体の傾き（lean）は方向とタイミングの判定・矢印表示にだけ使い、見た目の体は傾けない
+function disp() { return p.th; }
+// 回転の中心：屈身・抱え込みは体の重心まわりに回す（腰まわりだと大きく振れて見えるため）
+function pivot(J) {
+  const w = (p.shape === 'P' || p.shape === 'T' || !p.shape) ? p.tuck : 0;
+  if (w < 0.01) return [0, 0];
+  J = J || joints(pose());
+  const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const parts = [[mid(J.hip, J.sh), 0.45], [J.head, 0.08], [mid(J.hip, J.knee), 0.2], [mid(J.knee, J.foot), 0.12],
+                 [mid(J.sh, J.elbow), 0.08], [mid(J.elbow, J.hand), 0.07]];
+  let x = 0, y = 0; for (const [q, m] of parts) { x += q[0] * m; y += q[1] * m; }
+  return [x * w, y * w];
+}
+// ひねり：体の長軸まわりの左右反転（bodyS）。画面上の回転方向は離陸時の向き（rotFace）のまま変えない
+function bodyS() {
+  let b;
+  if (p.plan) b = Math.cos(Math.PI * halvesDone());   // 技のひねり
+  else { const fx = p.twist >= 0 ? p.face * Math.cos(Math.PI * p.twist) : p.face; b = fx * (p.rotFace || 1); }
+  return b < 0 ? Math.min(-0.12, b) : Math.max(0.12, b);
+}
+function toWorld(l, A, c) {
+  c = c || [0, 0];
+  const bs = bodyS(), rf = p.rotFace || 1;
+  const co = Math.cos(A), s = Math.sin(A), cx = c[0] * bs, dx = l[0] * bs - cx, dy = l[1] - c[1];
+  return [p.x + rf * (cx + (dx * co - dy * s)), p.y - (c[1] + dx * s + dy * co)];
+}
+function lowest() {
+  const j = joints(pose()), A = disp(), pc = pivot(j);
+  let m = Infinity;
+  for (const k of ['hip', 'sh', 'elbow', 'hand', 'knee', 'foot']) m = Math.min(m, toWorld(j[k], A, pc)[1]);
+  m = Math.min(m, toWorld(j.head, A, pc)[1] - 0.12);
+  return m;
+}
+function footY() { return joints(pose()).foot[1]; }
+
+// ---- 入力 ----
+let titleBtns = [];
+const hit = (b, x, y) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+function down(x, y) {
+  if (st === 'list') return;
+  if (st === 'splash') {   // オープニング：言語を選んでタイトルへ
+    if (splashT < INTRO) { splashT = INTRO; return; }   // 演出中のタップは最後まで飛ばす
+    if (x === undefined) { chooseLang(LANG); return; }
+    for (const b of langBtns) if (hit(b, x, y)) { if (b.lang !== LANG) { toggleLang(); tone(600, 800, 0.05, 'triangle', 0.06); } return; }
+    if (startBtn && hit(startBtn, x, y)) { chooseLang(LANG); return; }
+    return;
+  }
+  if (st === 'title') {
+    if (x === undefined) { startGame('normal'); return; }
+    if (backBtn && hit(backBtn, x, y)) { st = 'splash'; splashT = INTRO; return; }   // 言語選択の画面へ戻る（演出は飛ばす）
+    for (const b of titleBtns) if (hit(b, x, y)) { b.act(); return; }
+    return;
+  }
+  if (st === 'over') {
+    if (overT <= 0.6) return;
+    if (x === undefined) { st = 'title'; return; }
+    pressedBtn = resultBtns.find(b => hit(b, x, y)) || null;
+    return;
+  }
+  if (st === 'play') holding = true;
+}
+function up() { holding = false; }
+function toggleMute() { muted = !muted; try { localStorage.setItem('tflip_mute', muted ? '1' : '0'); } catch (e) {} }
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault(); initAudio(); syncSize();
+  const r = cv.getBoundingClientRect();            // 表示上の位置 → 描画座標
+  const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+  if (x < 60 && y > H - 64) { toggleMute(); return; }
+  down(x, y);
+});
+addEventListener('pointerup', e => {
+  up();
+  if (st === 'over' && pressedBtn) {   // 共有は指を離した瞬間に（iPhoneで確実に開くため）
+    const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+    const b = pressedBtn; pressedBtn = null;
+    if (hit(b, x, y)) b.act();
+  }
+});
+addEventListener('pointercancel', () => { up(); pressedBtn = null; });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('keydown', e => { initAudio(); if (e.code === 'KeyM') toggleMute(); if ((e.code === 'Space' || e.code === 'Enter') && !e.repeat) { e.preventDefault(); down(); } });
+addEventListener('keyup', e => { if (e.code === 'Space' || e.code === 'Enter') up(); });
+
+// ---- 更新 ----
+function pop(text, color = '#fff', size = 1, dy = 0) {
+  pops.push({text, color, size, t: 0, x: p.x, y: p.y + 1.4 + dy});
+}
+function fullName(turns, sh) {   // 1回宙返りは姿勢が技名に入る（タック/パイク/レイアウト）
+  sh = sh || 'T';
+  if (Math.abs(turns) === 1) return ({L: 'レイアウト', P: 'パイク', T: 'タック'})[sh] + (turns > 0 ? 'バラニー' : 'バック');
+  return `${flipName(turns)}（${sh}）`;
+}
+function flipName(turns) {
+  const n = Math.abs(turns), f = turns > 0;
+  if (n === 1) return f ? 'タックバラニー' : 'タックバック';
+  if (n === 2) return f ? 'バラニーアウト' : 'ダブルバック';
+  if (n === 3) return f ? 'トリフィスアウト' : 'トリプルバック';
+  return `${n}回宙返り（${f ? '前' : '後'}）`;
+}
+function launch() {
+  p.vx = 0; p.contact = false; p.crouch = 0; p.w = 0; p.dir = 0; p.airT = 0; p.twisted = false; p.twist = -1; p.shape = null;
+  p.opened = false; p.openK = 0; p.openTarget = 0; p.wasHolding = false; p.rotFace = p.face; p.plan = null;
+  p.leanPh = Math.random() < 0.5 ? 0 : Math.PI;
+  p.finalJump = p.final;   // 10本目の後は最後のストレートジャンプ
+  p.forceDir = st === 'play' && lastDir ? -lastDir : 0;   // 演技中は前後を交互に固定
+  if (p.drop) {            // 腹落ち・背落ちからの立て直しジャンプ
+    p.drop = 0; p.recover = true; p.leanK = 0; p.bounceN = 0;
+  } else {
+    p.recover = false; p.th = 0; p.leanK = p.finalJump ? 0 : 1; p.y = footY();
+  }
+  p.bounceN++;
+  let h = Math.min(st === 'title' ? 2.4 : MAXH, 1.0 + p.bounceN * 1.3);
+  if (st === 'play' && h >= MAXH) h -= Math.random() * 0.8;   // 最高点付近は毎回少し高さが変わる
+  if (p.finalJump && !p.recover) h = 2.4;
+  p.vy = Math.sqrt(2 * G * h); p.apex = 0;
+  if (st === 'play') jumps++;
+}
+// ---- 採点（FIG方式：D難度＋E演技＋T跳躍時間＋H移動） ----
+// 難度点：1/4宙返り0.1、360°ごと＋0.1、1080°以上は360°ごとにさらに＋0.1、1/2ひねり0.1、
+//   屈身・伸身：ひねりなし1回宙は＋0.1、2回宙以上は1回転ごと＋0.1、後方の2回宙＋0.1・3回宙＋0.2（2025年〜）
+function difficulty(n, h, sh, dir) {
+  const tw = h.reduce((a, b) => a + b, 0);
+  let d = n * 0.4 + n * 0.1 + Math.max(0, n - 2) * 0.1 + tw * 0.1;   // 1/4宙返り・360°ボーナス・1080°以上・ひねり
+  if (sh === 'P' || sh === 'L') { if (n >= 2) d += n * 0.1; else if (tw === 0) d += 0.1; }   // 姿勢ボーナス
+  if (n === 2) d += Math.max(0, tw - 4) * 0.1;          // 2回宙：720°を超えるひねり 180°ごと＋0.1
+  else if (n === 3) d += Math.max(0, tw - 2) * 0.2;     // 3回宙：360°を超えるひねり 180°ごと＋0.2
+  else if (n >= 4) d += tw * 0.2;
+  if (dir < 0) d += n === 2 ? 0.1 : n === 3 ? 0.2 : n >= 4 ? 0.3 : 0;   // 後方の多回転ボーナス
+  return Math.round(d * 10) / 10;
+}
+// 演技点は1本2.0点満点（減点も2倍）、跳躍時間は1本最大1.83秒（10本で18.3）、移動点は1本1.0点満点
+const T_MAX1 = 1.83, T_FULL = 2 * Math.sqrt(2 * MAXH / G);
+const tScore = airT => Math.min(T_MAX1, airT * T_MAX1 / T_FULL);
+function calcScore() {
+  const n = el.length;
+  const D = el.reduce((t, e) => t + e.d, 0);
+  const E = Math.max(0, 2 * n - el.reduce((t, e) => t + e.ded, 0));
+  const T = el.reduce((t, e) => t + e.t, 0);
+  const Hs = Math.max(0, n - el.reduce((t, e) => t + (e.hd || 0), 0));
+  return {D, E, T, H: Hs, total: D + E + T + Hs};
+}
+// 移動：PERFECT＝真ん中（0）／GOOD＝赤線の内側（−0.1）／着地乱れ＝赤線の外の端（−0.2）
+// ずれている間は同じ側に居続け、PERFECTで真ん中に戻る。真ん中から出るたびに 左→右→左… と交互
+const POS_X = [0, 0.6, 1.55];
+function sideFor(level) { return level === 0 ? 0 : p.pos ? Math.sign(p.pos) : p.nextSide; }
+function predictX(level) { return sideFor(level) * POS_X[level]; }
+function moveTo(level) {
+  const sd = sideFor(level);
+  if (level && !p.pos) p.nextSide = -sd;   // 次に真ん中から出るときは反対側
+  p.pos = sd * level; p.tx = sd * POS_X[level];
+  return level === 1 ? 0.1 : level === 2 ? 0.2 : 0;
+}
+const f1 = v => v.toFixed(1), f3 = v => v.toFixed(3);
+// ---- 初回だけの練習ガイド（最初の3本） ----
+let tutDone = false; try { tutDone = localStorage.getItem('tflip_tut') === '1'; } catch (e) {}
+let tutOn = false, tutTip = null;
+function tutAfter(ded) {
+  if (!tutOn) return;
+  const tip = ded === 0 ? [L('ナイス！PERFECT', 'Nice! PERFECT'), L('この調子で10本つなごう', 'Keep it up for 10 skills')]
+    : !p.opened ? [L('離して体を開こう', 'Release to open up'), L('離したタイミングで着地が決まるよ', 'When you let go decides your landing')]
+    : p.lastErr < 0 ? [L('少し早かった！', 'A little early!'), L('もう少し待ってから離そう', 'Hold a bit longer before releasing')]
+    : [L('少し遅かった！', 'A little late!'), L('もう少し早めに離そう', 'Release a bit earlier')];
+  tutTip = {a: tip[0], b: tip[1], t: 0};
+  if (el.length >= 3) { tutOn = false; tutDone = true; try { localStorage.setItem('tflip_tut', '1'); } catch (e) {} }
+}
+function drawTutorial(fs) {
+  let a = null, b = null;
+  if (st !== 'play') return;
+  if (tutTip && tutTip.t < 2.6) { a = tutTip.a; b = tutTip.b; }
+  else if (tutOn && st === 'play') {
+    if (holding) { a = L('足が真上に来る手前で離す！', 'Let go just before your feet point up!'); b = L('離すと体が開いて着地の準備', 'Releasing opens your body for landing'); }
+    else if (el.length === 0) { a = L('跳んでいる間に長押しで回転！', 'Hold while in the air to flip!'); b = L('PCはマウスかスペースキー', 'On PC: mouse button or Space'); }
+  }
+  if (!a) return;
+  const y = 30 + fs * 4.6, w = Math.min(W - 24, 460), h = fs * 3.1, x = (W - w) / 2;
+  ctx.save(); ctx.globalAlpha = 0.92; ctx.fillStyle = 'rgba(10,24,52,.85)';
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, 14) : ctx.rect(x, y, w, h); ctx.fill();
+  ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+  txt(a, W / 2, y + h * 0.36, fs * 1.0, '#ffd23f');
+  txt(b, W / 2, y + h * 0.72, fs * 0.72, '#ffffff');
+}
+function addElement(name, d, ded, t, hd) {
+  el.push({name, d, ded: ded * 2, t: tScore(t), hd: hd || 0}); score = Math.round(calcScore().total * 1000) / 1000;
+  tutAfter(ded);
+  pop(`${el.length}/10`, '#ffffff', 0.8, 1.5);
+  if (el.length === 10) {
+    p.final = true;
+    pop(L('10本完了！最後はストップ', '10 skills done! Now stick it'), '#ffd23f', 0.8, -1.0);
+  }
+}
+function touchdown() {
+  const d = p.opened ? p.openTarget : disp(), a = na(d);   // 開いた技は開きのタイミングだけで着地を評価
+  const turns = Math.round((d - a) / TAU), aa = Math.abs(a);
+  // ひねりの結果で着地の向きを決め、回転を終える
+  let doneH = [];
+  if (p.plan) {
+    const hd = Math.round(halvesDone());
+    p.face = p.rotFace * (hd % 2 ? -1 : 1);
+    const nn = Math.abs(turns);
+    doneH = p.plan.normal ? Array.from({length: nn}, (_, k) => k === nn - 1 && hd % 2 ? 1 : 0)
+      : Array.from({length: nn}, (_, k) => k < p.plan.h.length ? p.plan.h[k] : 0);   // 実際に回った宙返りぶんのひねり
+  }
+  sfx.bounce(Math.abs(p.vy));
+  const endRot = () => { p.plan = null; p.rotFace = p.face; p.twist = -1; };
+  if (st !== 'play') { endRot(); normalContact(a); return; }
+  if (aa < 0.75) {
+    const n = Math.abs(turns);
+    if (p.finalJump) { endRot(); startStick(a, '演技終了'); return; }
+    if (n > 0) {
+      totalFlips += n;
+      // 演技点の減点：PERFECT 0／GOOD 0.1〜0.2／着地乱れ 0.3〜0.4（PERFECTに近いほど少ない）
+      const grade = aa < 0.12 ? ['PERFECT!', 0, '#ff7ab8'] : aa < 0.35 ? ['GOOD', aa < 0.235 ? 0.1 : 0.2, '#b6ff6a'] : [L('着地乱れ', 'SHAKY'), aa < 0.55 ? 0.3 : 0.4, '#ffb36b'];
+      const dir = Math.sign(turns), sh = p.plan ? p.plan.s : (p.shape || 'T');
+      if (doneH.length !== n) doneH = Array(n).fill(0);
+      const dd = difficulty(n, doneH, sh, dir), nm = skillName(n, doneH, sh, dir);
+      if (p.plan && p.plan.normal) dirCount[dir] = (dirCount[dir] || 0) + 1;
+      else if (p.plan && n === p.plan.n) skillCount[`${dir}_${n}`] = (skillCount[`${dir}_${n}`] || 0) + 1;
+      pop(nm, turns > 0 ? '#ffd23f' : '#7fe0ff', 1.0, 0.5);
+      pop(`D ${f1(dd)}`, '#fff', 1.0, 0);
+      const hd = moveTo(aa < 0.12 ? 0 : aa < 0.35 ? 1 : 2);
+      pop(grade[0] + (grade[1] ? ` E−${f1(grade[1] * 2)}` : '') + (hd ? ` H−${f1(hd)}` : ''), grade[2], 0.9, -0.5);
+      aa < 0.12 ? sfx.perfect() : sfx.good();
+      lastDir = dir;
+      addElement(nm, dd, grade[1], p.airT, hd);
+    } else if (el.length > 0 && !p.recover) {   // 演技中のストレートジャンプ＝中断
+      endRot(); startStick(a, '中断'); return;
+    }
+    endRot(); normalContact(a);
+  } else if (aa < 2.35) {
+    if (p.finalJump) { endRot(); startStick(a, '演技終了'); return; }
+    endRot(); drop(a);
+    if (el.length > 0) addElement(a > 0 ? L('腹落ち', 'Front drop') : L('背落ち', 'Back drop'), 0, 0.5, p.airT, moveTo(2));
+  } else { endRot(); crash(d); }
+}
+function normalContact(a) {
+  p.vx = 0; p.th = a; p.w = 0; p.contact = true; p.contactT = 0;
+  p.D = Math.min(0.75, 0.25 + Math.abs(p.vy) * 0.04);
+}
+function startStick(a, reason) {
+  p.th = Math.abs(a) < 0.75 ? a : 0; p.w = 0; p.contact = true; p.stick = true; p.stickT = 0; p.drop = 0;
+  p.D = Math.min(0.75, 0.25 + Math.abs(p.vy) * 0.04);
+  endReason = reason;
+  if (reason === '演技終了') { pop(Math.abs(a) < 0.15 ? L('ビタ止め！', 'STUCK IT!') : L('フィニッシュ', 'FINISH'), '#ffd23f', 1.3, 0.6); sfx.perfect(); }
+  else { pop(L('中断', 'INTERRUPTED'), '#ffb36b', 1.3, 0.6); sfx.drop(); }
+}
+function finishTwist() {
+  if (p.twist < 0 && p.twisted) return;
+  p.face = -p.face; p.twist = -1; p.twisted = true;
+  if (st === 'play') pop(L('1/2ひねり', '1/2 TWIST'), '#ffe9a8', 0.75, 1.0);
+}
+function drop(a) {
+  p.vx = 0; p.th = a; p.w = 0; p.leanK = 0; p.lean = 0; p.dir = 0;
+  p.drop = Math.sign(a);   // +1 腹落ち / -1 背落ち
+  p.contact = true; p.contactT = 0;
+  p.D = Math.min(0.3, 0.12 + Math.abs(p.vy) * 0.02);
+  pop(a > 0 ? L('腹落ち', 'FRONT DROP') : L('背落ち', 'BACK DROP'), '#9fd0ff', 1.1, 0.4);
+  if (el.length > 0) pop(L('0点', '0 pts'), '#e6e6e6', 0.8, -0.2);
+  sfx.drop();
+}
+function crash(d) {
+  st = 'crash'; crashT = 0; endReason = '転倒';
+  p.th = d; p.leanK = 0; p.lean = 0;
+  const s = Math.sign(p.w) || (Math.random() < 0.5 ? -1 : 1);
+  p.vy = 3 + Math.random() * 1.5;
+  p.vx = (Math.random() < 0.5 ? -1 : 1) * (1.2 + Math.random() * 1.3);
+  p.w = s * (4 + Math.random() * 3); p.flail = 1; bedDepth = 0.35;
+  pop(L('失敗…', 'FAIL…'), '#ff6b6b', 1.2, 0.3); sfx.fail();
+}
+// 着地（腰が立った高さに戻る）までの残り時間
+function timeToLand() {
+  const d = p.y - 0.9;
+  return (p.vy + Math.sqrt(Math.max(0, p.vy * p.vy + 2 * G * d))) / G;
+}
+// 開き：回転の進む向きで見て、足が真上（12時）に届く手前30°の間に離すのが理想
+//   例）右向きの前方系（画面で時計回り）なら 11時〜12時＝PERFECT、10〜11時と12〜13時＝GOOD/着地乱れ、9〜10時と13〜14時＝腹落ち・背落ち
+//   後方系はその逆回り（1時〜12時＝PERFECT）
+const OPEN_WIDE = 1.5;   // 判定帯の広さ（1＝各1時間、1.5＝各1時間半、2＝各2時間）
+function openLanding(eDeg) {          // eDeg：12時からのずれ（−が手前＝早い、＋が通り過ぎ＝遅い）→ 着地の角度（度）
+  const d = (eDeg + 15) / OPEN_WIDE, a = Math.abs(d), sg = d < 0 ? -1 : 1;   // 理想帯の中心は −15°（11時半）
+  if (a <= 15) return d * 0.3;                                  // PERFECT
+  if (a <= 30) return sg * (10 + (a - 15) / 15 * 8);           // GOOD
+  if (a <= 45) return sg * (25 + (a - 30) / 15 * 15);          // 着地乱れ
+  if (a <= 75) return sg * (55 + (a - 45) / 30 * 55);          // 腹落ち・背落ち
+  return sg * Math.min(170, 140 + (a - 75));                   // 転倒
+}
+function openBody() {
+  const phi = p.th * p.dir;                 // 回った角度（進行方向を正）
+  if (phi < Math.PI / 2) return;            // ほとんど回っていない軽いタップは開き扱いにしない
+  const m = phi % TAU;                      // 今の宙返りの中での位置（π＝足が真上＝12時）
+  const eDeg = (m - Math.PI) * 180 / Math.PI;
+  const nEnd = Math.floor(phi / TAU) + 1;   // この宙返りを回り切る
+  p.opened = true; p.openPhi = phi; p.lastErr = eDeg + 15;   // ＋なら遅い、−なら早い（理想は−15°）
+  p.openTarget = p.dir * (nEnd * TAU + openLanding(eDeg) * Math.PI / 180);
+  // 画面上の時計で表示（画面で時計回りなら 12時の手前は11時台）
+  const cw = p.dir * (p.rotFace || 1) > 0 ? 1 : -1;
+  let hr = 12 + cw * eDeg / 30; hr = ((hr % 12) + 12) % 12; if (hr < 1) hr += 12;
+  const hh = Math.floor(hr), mm = Math.round((hr - hh) * 60) % 60, hh2 = mm === 0 && hr - hh > 0.5 ? (hh % 12) + 1 : hh;
+  const clock = `${hh2}:${String(mm).padStart(2, '0')}`;
+  const d = Math.abs(eDeg + 15) / OPEN_WIDE;
+  const mark = d <= 15 ? ['◎', '#ff7ab8'] : d <= 30 ? ['○', '#b6ff6a'] : d <= 45 ? ['△', '#ffb36b'] : ['×', '#ff8a8a'];
+  pop(`${L('開き', 'OPEN')} ${clock} ${mark[0]}`, mark[1], 0.85, 1.6);
+  // 開いた時点で着地の評価が決まるので、落ちてくる位置へ空中で流れていく
+  if (st === 'play' && !p.finalJump) {
+    const aa = Math.abs(na(p.openTarget));
+    const lv = aa < 0.12 ? 0 : aa < 0.35 ? 1 : aa < 2.35 ? 2 : -1;
+    if (lv >= 0) p.vx = (predictX(lv) - p.x) / Math.max(0.12, timeToLand());
+  }
+  tone(900, 1300, 0.08, 'triangle', 0.08);
+}
+function airUpdate(dt) {
+  p.airT += dt; p.vy -= G * dt; p.y += p.vy * dt; p.x += p.vx * dt;
+  p.apex = Math.max(p.apex, p.y - 0.9);
+  const per = Math.max(0.7, 1.1 - 0.035 * el.length);   // 演技が進むほど傾きの揺れが速くなる
+  p.lean = 0.3 * Math.sin(p.leanPh + p.airT * TAU / per);
+  if (p.recover) {
+    p.th += (0 - p.th) * (1 - Math.exp(-dt * 3.5));
+    p.tuck *= Math.exp(-dt * 10); p.w = 0;
+  } else if (p.opened) {
+    // 開いた後：着地の瞬間に目標の角度になるよう、伸びたまま回る
+    p.openK += (1 - p.openK) * (1 - Math.exp(-dt * 22));
+    const rem = timeToLand();
+    if (rem > 0.03) p.w = Math.max(-16, Math.min(16, (p.openTarget - p.th) / rem));
+  } else if (holding && st === 'play' && !p.finalJump) {
+    if (!p.dir) { p.dir = p.forceDir || (p.lean >= 0 ? 1 : -1); planSkill(); }
+    p.w += (p.dir * TW - p.w) * (1 - Math.exp(-dt * 9));
+    p.tuck += (1 - p.tuck) * (1 - Math.exp(-dt * 14));
+    p.wasHolding = true;
+  } else {
+    if (p.wasHolding && p.dir && st === 'play') openBody();   // 指を離した＝開き
+    p.wasHolding = false;
+    if (!p.opened) { p.w *= Math.exp(-dt * 4.5); p.tuck *= Math.exp(-dt * 10); }
+  }
+  if (p.dir) p.leanK *= Math.exp(-dt * 6);
+  p.th += p.w * dt;
+  // 前方系は回転を止めた後、自動で1/2ひねり（向きが反転）
+  if (p.twist >= 0) { p.twist += dt / 0.32; if (p.twist >= 1) finishTwist(); }
+  bedDepth *= Math.exp(-dt * 10);
+  if (p.vy < 0 && lowest() <= 0) touchdown();
+}
+function contactUpdate(dt) {
+  p.contactT += dt;
+  p.x += (p.tx - p.x) * (1 - Math.exp(-dt * 14));   // 着地位置へずれる／真ん中へ戻る
+  const k = Math.min(1, p.contactT / CT), s = Math.sin(Math.PI * k);
+  p.openK *= Math.exp(-dt * 10);
+  if (p.stick) {   // ストップ（ビタ止め）
+    p.stickT += dt; const t = p.stickT, h = CT / 2;
+    bedDepth = t < h ? p.D * Math.sin(Math.PI * t / CT) : p.D * Math.exp(-(t - h) * 3.5) * Math.abs(Math.cos((t - h) * 11));
+    p.crouch = t < h ? 0.85 * Math.sin(Math.PI * t / CT) : 0.85 * Math.exp(-(t - h) * 3);
+    p.tuck *= Math.exp(-dt * 15); p.th *= Math.exp(-dt * 12); p.lean = 0;
+    p.y = -bedDepth + footY();
+    if (t > 1.5 && st === 'play') { st = 'over'; overT = 0; finalize(); }
+    return;
+  }
+  if (p.drop) {
+    p.crouch = 0; p.tuck *= Math.exp(-dt * 15);
+    p.th += (p.drop * Math.PI / 2 - p.th) * (1 - Math.exp(-dt * 15));
+    bedDepth = p.D * s;
+    p.y += 0.1 - bedDepth * 0.6 - lowest();
+    if (k >= 1) launch();
+    return;
+  }
+  p.crouch = 0.85 * s; p.tuck *= Math.exp(-dt * 15); p.th *= Math.exp(-dt * 18); p.lean = 0;
+  bedDepth = p.D * s;
+  p.y = -bedDepth + footY();
+  if (k >= 1) launch();
+}
+function crashUpdate(dt) {
+  p.vy -= G * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.th += p.w * dt;
+  p.tuck *= Math.exp(-dt * 3);
+  const low = lowest();
+  const ax = Math.abs(p.x);
+  const floor = ax < 2.5 ? 0 : ax < 4.2 ? GROUND + 0.3 : GROUND;
+  if (low < floor) {
+    p.y += floor - low;
+    if (p.vy < 0) {
+      p.vy = -p.vy * (floor === 0 ? 0.55 : 0.25);
+      if (floor === 0) bedDepth = Math.min(0.4, bedDepth + Math.abs(p.vy) * 0.05);
+      p.w *= 0.65; p.vx *= 0.85;
+      if (Math.abs(p.vy) < 0.6) p.vy = 0;
+    }
+    if (p.vy === 0) { p.vx *= Math.exp(-dt * 4); p.w *= Math.exp(-dt * 5); p.flail *= Math.exp(-dt * 2); }
+  }
+  bedDepth *= Math.exp(-dt * 6);
+}
+function finalize() {
+  if (score > best) { best = score; newBest = score > 0; try { localStorage.setItem(bestKey(), best); } catch (e) {} }
+  makeCard();
+}
+// ---- 結果のシェア（文章＋URL、対応端末では結果カードの画像も） ----
+const SITE = 'https://trampoline-flip.netlify.app/';
+let cardFile = null, resultBtns = [], pressedBtn = null;
+const shareUrl = () => LANG === 'en' ? SITE + 'en/' : SITE;
+function shareText() {
+  const sc = calcScore(), m = mode === 'hard' ? 'HARD' : 'NORMAL';
+  const dets = `D ${f1(sc.D)} / E ${f1(sc.E)} / T ${f3(sc.T)} / H ${f1(sc.H)}`;
+  return LANG === 'en'
+    ? `I scored ${f3(score)} in TRAMPOLINE FLIP (${m})!${newBest ? ' New record!' : ''}\n${dets}\n#TrampolineFlip #trampoline`
+    : `TRAMPOLINE FLIP（${m}）で ${f3(score)} 点！${newBest ? '自己ベスト更新！' : ''}\n${dets}\n#TrampolineFlip #トランポリン`;
+}
+function makeCard() {
+  cardFile = null;
+  try {
+    const c = document.createElement('canvas'); c.width = 1200; c.height = 630; const g = c.getContext('2d');
+    const gr = g.createLinearGradient(0, 0, 1200, 630); gr.addColorStop(0, '#0b1d4a'); gr.addColorStop(1, '#1b4aa8');
+    g.fillStyle = gr; g.fillRect(0, 0, 1200, 630);
+    g.save(); g.beginPath(); g.roundRect ? g.roundRect(70, 135, 360, 360, 80) : g.rect(70, 135, 360, 360); g.clip();
+    if (ICON.complete && ICON.naturalWidth) g.drawImage(ICON, 70, 135, 360, 360); g.restore();
+    const sc = calcScore();
+    g.textBaseline = 'middle'; g.textAlign = 'left';
+    g.font = `900 64px ${FONT}`; g.fillStyle = '#ffd23f'; g.fillText('TRAMPOLINE FLIP', 490, 120);
+    g.font = `800 34px ${FONT}`; g.fillStyle = '#ffffff';
+    g.fillText((mode === 'hard' ? 'HARD' : 'NORMAL') + (newBest ? (LANG === 'en' ? '   NEW RECORD!' : '   自己ベスト更新！') : ''), 494, 190);
+    g.font = `900 150px ${FONT}`; g.fillStyle = '#ffffff'; g.fillText(f3(score), 486, 300);
+    const items = [['D', f1(sc.D)], ['E', f1(sc.E)], ['T', f3(sc.T)], ['H', f1(sc.H)]];
+    items.forEach(([k, v], i) => {
+      const x = 490 + i * 168;
+      g.fillStyle = 'rgba(255,255,255,.12)'; g.beginPath(); g.roundRect ? g.roundRect(x, 400, 154, 100, 16) : g.rect(x, 400, 154, 100); g.fill();
+      g.textAlign = 'center'; g.fillStyle = '#ffe9a8'; g.font = `800 26px ${FONT}`; g.fillText(k, x + 77, 428);
+      g.fillStyle = '#ffffff'; g.font = `900 36px ${FONT}`; g.fillText(v, x + 77, 470);
+    });
+    g.textAlign = 'left'; g.font = `700 26px ${FONT}`; g.fillStyle = '#b6ff6a';
+    g.fillText(shareUrl().replace('https://', '') + (LANG === 'en' ? '  ·  100% FREE' : '  ・  完全無料'), 490, 565);
+    c.toBlob(b => { if (b) cardFile = new File([b], 'trampoline-flip-score.png', {type: 'image/png'}); }, 'image/png');
+  } catch (e) { cardFile = null; }
+}
+function openWin(u) { const w = window.open(u, '_blank', 'noopener'); if (!w) location.href = u; }
+function shareX() { openWin('https://twitter.com/intent/tweet?text=' + encodeURIComponent(shareText()) + '&url=' + encodeURIComponent(shareUrl())); }
+function shareLINE() { openWin('https://line.me/R/share?text=' + encodeURIComponent(shareText() + '\n' + shareUrl())); }
+async function shareNative() {
+  const text = shareText(), url = shareUrl();
+  try {
+    if (cardFile && navigator.canShare && navigator.canShare({files: [cardFile]})) { await navigator.share({files: [cardFile], text: text + '\n' + url}); return; }
+    if (navigator.share) { await navigator.share({text, url}); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  if (cardFile) {   // 共有に対応していない端末（PCなど）は画像を保存してからXへ
+    const a = document.createElement('a'); a.href = URL.createObjectURL(cardFile); a.download = cardFile.name; a.click();
+  }
+  shareX();
+}
+function update(dt) {
+  if (st === 'splash') splashT += dt;
+  time += dt;
+  if (st === 'over' && p.stick) { overT += dt; contactUpdate(dt); }
+  else if (st === 'crash' || st === 'over') {
+    crashUpdate(dt);
+    if (st === 'crash') { crashT += dt; if (crashT > 1.8) { st = 'over'; overT = 0; finalize(); } }
+    else overT += dt;
+  } else if (p.contact) contactUpdate(dt);
+  else airUpdate(dt);
+  if (whoosh) {
+    const on = !muted && st === 'play' && !p.contact;
+    const tg = on ? Math.min(0.13, Math.abs(p.w) / TW * 0.13) : 0;
+    whoosh.g.gain.setTargetAtTime(tg, AC.currentTime, 0.04);
+    whoosh.bp.frequency.setTargetAtTime(450 + Math.abs(p.w) * 70, AC.currentTime, 0.05);
+  }
+  const visTop = bedY / S;
+  const target = Math.max(0, p.y + 1.6 - (visTop - 1.8));
+  camY += (target - camY) * (1 - Math.exp(-dt * 5));
+  for (const q of pops) { q.t += dt; q.y += dt * 0.6; }
+  pops = pops.filter(q => q.t < 1.4);
+}
+
+// ---- 描画 ----
+const sx = x => cx + x * S;
+const sy = y => bedY - (y - camY) * S;
+function txt(s, x, y, size, col = '#fff', align = 'center', alpha = 1) {
+  ctx.save(); ctx.globalAlpha = alpha;
+  ctx.font = `900 ${size}px ${FONT}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round'; ctx.lineWidth = size * 0.2; ctx.strokeStyle = 'rgba(15,35,70,.9)';
+  ctx.strokeText(s, x, y); ctx.fillStyle = col; ctx.fillText(s, x, y); ctx.restore();
+}
+// 奥行き付きの座標（z: 手前が＋）
+const KZ = 0.2;
+const pz = (x, y, z) => [sx(x), sy(y) + z * KZ * S];
+function poly(pts, fill, stroke, lw) {
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw || 1; ctx.stroke(); }
+}
+function rectW(x0, y0, x1, y1, col) { // ワールド座標の長方形（奥の壁）
+  ctx.fillStyle = col; ctx.fillRect(sx(x0), sy(y1), (x1 - x0) * S, (y1 - y0) * S);
+}
+function drawBackground() {
+  const fy = sy(GROUND) - 2.4 * KZ * S;   // 床の奥（壁との境目）。奥行き分だけ上に
+  const xL = -cx / S - 1, xR = cx / S + 1;
+  // 天井・上部の壁
+  ctx.fillStyle = '#5d6166'; ctx.fillRect(0, 0, W, H);
+  rectW(xL, 7.6, xR, 9.6, '#d9d0b6');
+  // 天井トラス
+  ctx.strokeStyle = '#3e4247'; ctx.lineWidth = Math.max(2, 0.06 * S);
+  for (let x = Math.floor(xL / 2) * 2; x < xR; x += 2) {
+    ctx.beginPath(); ctx.moveTo(sx(x), sy(9.6)); ctx.lineTo(sx(x + 1), sy(11.2)); ctx.lineTo(sx(x + 2), sy(9.6)); ctx.stroke();
+  }
+  rectW(xL, 11.1, xR, 11.3, '#3e4247');
+  // 照明
+  for (let x = Math.floor(xL / 3.2) * 3.2 + 1.2; x < xR; x += 3.2) {
+    const g = ctx.createRadialGradient(sx(x), sy(10.3), 0, sx(x), sy(10.3), 0.9 * S);
+    g.addColorStop(0, 'rgba(255,255,240,.9)'); g.addColorStop(1, 'rgba(255,255,240,0)');
+    ctx.fillStyle = g; ctx.fillRect(sx(x) - S, sy(10.3) - S, 2 * S, 2 * S);
+    rectW(x - 0.25, 10.15, x + 0.25, 10.4, '#fffdf2');
+  }
+  // 鉄骨の梁（横）
+  rectW(xL, 9.45, xR, 9.6, '#8d9298');
+  rectW(xL, 7.85, xR, 8.0, '#a3a8ad');
+  rectW(xL, 7.55, xR, 7.65, '#8d9298');
+  // 柱（縦）
+  for (let x = Math.floor(xL / 4) * 4 + 1; x < xR; x += 4) rectW(x - 0.07, 7.6, x + 0.07, 9.6, '#9aa0a6');
+  // カーテン
+  rectW(xL, GROUND, xR, 7.55, '#eadfc4');
+  for (let x = Math.floor(xL / 0.45) * 0.45; x < xR; x += 0.45) {
+    rectW(x, GROUND, x + 0.12, 7.5, 'rgba(160,140,100,.18)');
+    rectW(x + 0.24, GROUND, x + 0.3, 7.5, 'rgba(255,255,255,.35)');
+  }
+  rectW(xL, 7.42, xR, 7.55, '#cfc3a5');
+  // バナー
+  const banner = (x0, y0, w, h, bg, fg, stripe, text) => {
+    rectW(x0, y0, x0 + w, y0 + h, bg);
+    if (stripe) { rectW(x0, y0 + h - 0.1, x0 + w, y0 + h - 0.04, stripe); rectW(x0, y0 + 0.04, x0 + w, y0 + 0.1, stripe); }
+    ctx.save(); ctx.fillStyle = fg;
+    let fsz = 0.26 * S;
+    ctx.font = `700 ${fsz}px Georgia, serif`;
+    const tw = ctx.measureText(text).width, maxW = w * S * 0.82;
+    if (tw > maxW) { fsz *= maxW / tw; ctx.font = `700 ${fsz}px Georgia, serif`; }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, sx(x0 + w / 2), sy(y0 + h / 2)); ctx.restore();
+  };
+  banner(-2.85, 3.0, 1.5, 2.6, '#2a5bb8', '#fff', null, 'TRAMPOLINE');
+  banner(0.7, 2.3, 2.3, 2.2, '#f7f7f4', '#22304a', '#22304a', 'TRAMPOLINE');
+  // 床
+  const fg = ctx.createLinearGradient(0, fy, 0, H);
+  fg.addColorStop(0, '#b97a3c'); fg.addColorStop(1, '#d99a55');
+  ctx.fillStyle = fg; ctx.fillRect(0, fy, W, H - fy);
+  ctx.fillStyle = '#6b5a3e'; ctx.fillRect(0, fy - 0.06 * S, W, 0.06 * S);   // 幅木
+  ctx.strokeStyle = 'rgba(90,50,20,.18)'; ctx.lineWidth = 1;
+  for (let y = fy + 6; y < H; y += Math.max(5, 0.12 * S)) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, fy + 0.75 * S); ctx.lineTo(W, fy + 0.75 * S); ctx.stroke();
+  ctx.strokeStyle = 'rgba(40,120,60,.6)';
+  ctx.beginPath(); ctx.moveTo(0, fy + 0.2 * S); ctx.lineTo(W, fy + 0.2 * S); ctx.stroke();
+  // 奥の別のトランポリン（小さめ）
+  for (const x of [-6.2, 6.2]) {
+    const y = GROUND + 0.75;
+    rectW(x - 2.3, y, x + 2.3, y + 0.14, '#1f56b0');
+    rectW(x - 2.0, y + 0.14, x + 2.0, y + 0.18, '#e9eef2');
+    ctx.strokeStyle = '#a9b0b6'; ctx.lineWidth = Math.max(1, 0.03 * S);
+    for (const e of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx(x + e * 2.0), sy(y)); ctx.lineTo(sx(x + e * 1.5), sy(GROUND + 0.15)); ctx.lineTo(sx(x + e * 1.0), sy(y)); ctx.stroke(); }
+  }
+}
+// 競技用（ユーロ型）長方形トランポリン
+const BX = 2.14, BZ = 1.07;   // ベッド半分の長さ・奥行き
+const FX = 2.5, FZ = 1.42;    // フレーム（パッド外周）
+const PT = 0.13;              // パッドの厚み
+function drawLegs(z, col, lw) {
+  ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round';
+  for (const e of [-1, 1]) {
+    const a = pz(e * 2.42, -PT, z), b = pz(e * 1.45, -PT, z), f = pz(e * 1.95, GROUND, z);
+    const f2 = pz(e * 2.55, GROUND, z), f1 = pz(e * 1.3, GROUND, z);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(f[0], f[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(f1[0], f1[1]); ctx.lineTo(f2[0], f2[1]); ctx.stroke();
+    // 補強
+    const m1 = pz(e * 2.18, -0.6, z), m2 = pz(e * 1.72, -0.6, z);
+    ctx.beginPath(); ctx.moveTo(m1[0], m1[1]); ctx.lineTo(m2[0], m2[1]); ctx.stroke();
+  }
+  // 横フレーム
+  const l = pz(-FX + 0.1, -PT, z), r = pz(FX - 0.1, -PT, z);
+  ctx.beginPath(); ctx.moveTo(l[0], l[1]); ctx.lineTo(r[0], r[1]); ctx.stroke();
+}
+function drawMats() {
+  for (const e of [-1, 1]) {
+    const x0 = e * 2.75, x1 = e * 4.3;
+    const t = GROUND + 0.3;
+    poly([pz(x0, t, -1.6), pz(x1, t, -1.6), pz(x1, t, 1.6), pz(x0, t, 1.6)], '#2c63c4');
+    poly([pz(x0, t, 1.6), pz(x1, t, 1.6), pz(x1, GROUND, 1.6), pz(x0, GROUND, 1.6)], '#1d4a9c');
+  }
+}
+function drawTrampBack() {
+  drawMats();
+  drawLegs(-FZ + 0.15, '#9aa3ab', Math.max(2, 0.05 * S));
+  // ばね（奥・左右）
+  // パッド：奥側と左右
+  poly([pz(-FX, 0, -FZ), pz(FX, 0, -FZ), pz(BX, 0, -BZ), pz(-BX, 0, -BZ)], '#2b6fd6');
+  poly([pz(-FX, 0, -FZ), pz(-BX, 0, -BZ), pz(-BX, 0, BZ), pz(-FX, 0, FZ)], '#2566c9');
+  poly([pz(FX, 0, -FZ), pz(BX, 0, -BZ), pz(BX, 0, BZ), pz(FX, 0, FZ)], '#2566c9');
+  // 端のパッド前面
+  // ベッド
+  poly([pz(-BX, 0, -BZ), pz(BX, 0, -BZ), pz(BX, 0, BZ), pz(-BX, 0, BZ)], '#eef1f3');
+  // ベッドの網目
+  ctx.strokeStyle = 'rgba(150,160,170,.35)'; ctx.lineWidth = 1;
+  for (let x = -BX; x <= BX + 0.01; x += 0.25) { const a = pz(x, 0, -BZ), b = pz(x, 0, BZ); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+  // 赤ライン（十字とゾーン）
+  ctx.strokeStyle = '#d83a3a'; ctx.lineWidth = Math.max(1.5, 0.035 * S);
+  const line = (a, b) => { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); };
+  line(pz(-0.5, 0, 0), pz(0.5, 0, 0)); line(pz(0, 0, -0.35), pz(0, 0, 0.35));
+  for (const e of [-1, 1]) line(pz(e * 1.0, 0, -BZ + 0.15), pz(e * 1.0, 0, BZ - 0.15));
+  // 沈み込み
+  if (bedDepth > 0.005) {
+    const dx = Math.max(-1.6, Math.min(1.6, p.x));
+    const L = pz(-BX, 0, BZ), Rr = pz(BX, 0, BZ), c = pz(dx, -2 * bedDepth, BZ);
+    const g = ctx.createLinearGradient(0, L[1], 0, L[1] + 2 * bedDepth * S);
+    g.addColorStop(0, '#c9cfd4'); g.addColorStop(1, '#9aa3ab');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(L[0], L[1]); ctx.quadraticCurveTo(c[0], c[1], Rr[0], Rr[1]); ctx.closePath(); ctx.fill();
+    // ベッド上の凹み影
+    const cc = pz(dx, 0, 0);
+    const rg = ctx.createRadialGradient(cc[0], cc[1], 0, cc[0], cc[1], 1.3 * S);
+    rg.addColorStop(0, `rgba(80,90,100,${Math.min(0.45, bedDepth)})`); rg.addColorStop(1, 'rgba(80,90,100,0)');
+    ctx.save(); ctx.beginPath();
+    const q = [pz(-BX, 0, -BZ), pz(BX, 0, -BZ), pz(BX, 0, BZ), pz(-BX, 0, BZ)];
+    ctx.moveTo(q[0][0], q[0][1]); for (const v of q.slice(1)) ctx.lineTo(v[0], v[1]); ctx.closePath(); ctx.clip();
+    ctx.fillStyle = rg; ctx.fillRect(cc[0] - 1.4 * S, cc[1] - 1.4 * S, 2.8 * S, 2.8 * S); ctx.restore();
+  }
+}
+function drawTrampFront() {
+  // 手前のフレームと脚
+  drawLegs(FZ - 0.1, '#c3cad0', Math.max(2, 0.06 * S));
+  // ばね
+  ctx.strokeStyle = '#8b939a'; ctx.lineWidth = Math.max(1, 0.025 * S);
+  for (let x = -BX + 0.1; x < BX; x += 0.18) {
+    const a = pz(x, -0.02, BZ), b = pz(x, -0.08, FZ - 0.05);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+  }
+  // 手前パッド（上面＋前面）
+  poly([pz(-FX, 0, FZ), pz(-BX, 0, BZ), pz(BX, 0, BZ), pz(FX, 0, FZ)], '#3478dc');
+  poly([pz(-FX, 0, FZ), pz(FX, 0, FZ), pz(FX, -PT, FZ), pz(-FX, -PT, FZ)], '#1c4fa6');
+  // 左右端の前面
+  for (const e of [-1, 1]) poly([pz(e * FX, 0, -FZ), pz(e * FX, 0, FZ), pz(e * FX, -PT, FZ), pz(e * FX, -PT, -FZ)], '#1a4795');
+  // パッドの継ぎ目とロゴ風ラベル
+  ctx.strokeStyle = 'rgba(10,30,80,.45)'; ctx.lineWidth = 1;
+  for (const x of [-1.25, 0, 1.25]) { const a = pz(x, 0, FZ), b = pz(x, -PT, FZ); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+  const lb = pz(-0.35, -0.02, FZ);
+  ctx.fillStyle = '#f2c230'; ctx.fillRect(lb[0], lb[1] + 0.015 * S, 0.7 * S, 0.08 * S);
+}
+function shoe(J, col) {   // 白いトランポリンシューズ
+  const d = [J.foot[0] - J.knee[0], J.foot[1] - J.knee[1]], l = Math.hypot(d[0], d[1]) || 1;
+  const u = [d[0] / l, d[1] / l];
+  ctx.strokeStyle = col; ctx.lineWidth = 0.12; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(J.foot[0] - u[0] * 0.07, J.foot[1] - u[1] * 0.07); ctx.lineTo(J.foot[0] + u[0] * 0.03, J.foot[1] + u[1] * 0.03); ctx.stroke();
+}
+function drawLeotard(sh) {
+  const base = [0, 0.02], v = [sh[0] - base[0], sh[1] - base[1]];
+  const L = Math.hypot(v[0], v[1]), ang = Math.atan2(v[1], v[0]), Wd = 0.155;
+  ctx.save(); ctx.translate(base[0], base[1]); ctx.rotate(ang);
+  // 胴体の形（+y が体の前側）
+  ctx.beginPath();
+  ctx.moveTo(-0.02, -Wd); ctx.lineTo(L - 0.04, -Wd * 0.95);
+  ctx.quadraticCurveTo(L + 0.06, 0, L - 0.04, Wd * 0.95);
+  ctx.lineTo(-0.02, Wd); ctx.closePath();
+  ctx.fillStyle = '#f7f7f9'; ctx.fill();
+  ctx.save(); ctx.clip();
+  const band = (pts, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(pts[0][0] * L, pts[0][1]); for (const q of pts.slice(1)) ctx.lineTo(q[0] * L, q[1]); ctx.closePath(); ctx.fill(); };
+  // 背中側から前へ流れる筆ストローク
+  band([[0.05, -0.17], [0.30, -0.17], [0.62, 0.02], [0.40, 0.0]], 'rgba(120,110,200,.55)');
+  band([[0.30, -0.17], [0.62, -0.17], [0.98, 0.06], [0.72, 0.02]], '#3b3fa0');
+  band([[0.55, -0.17], [0.70, -0.17], [1.05, 0.04], [0.92, 0.06]], '#d8262e');
+  band([[0.66, -0.17], [0.80, -0.17], [1.05, -0.02], [1.0, 0.03]], '#6d5bbd');
+  // 白いかすれ
+  ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 0.012;
+  for (const t of [0.42, 0.58, 0.76]) { ctx.beginPath(); ctx.moveTo(t * L, -0.17); ctx.lineTo((t + 0.3) * L, 0.02); ctx.stroke(); }
+  ctx.restore();
+  // 赤の縁取り（襟ぐり・袖ぐり）
+  ctx.strokeStyle = '#d8262e'; ctx.lineWidth = 0.028;
+  ctx.beginPath(); ctx.moveTo(L - 0.05, -Wd * 0.9); ctx.quadraticCurveTo(L + 0.05, 0, L - 0.05, Wd * 0.9); ctx.stroke();
+  ctx.restore();
+}
+function drawPlayer() {
+  const o = pose(), J = joints(o), B = joints(o, {ua: -0.25, th: 0.14, sh: -0.06});
+  ctx.save();
+  const bs = bodyS(), pc = pivot(J), pcx = pc[0] * bs;
+  ctx.translate(sx(p.x), sy(p.y)); ctx.scale(p.rotFace || 1, 1);
+  ctx.translate(pcx * S, pc[1] * S); ctx.rotate(disp()); ctx.translate(-pcx * S, -pc[1] * S);
+  ctx.scale(bs, 1); ctx.scale(S, S);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const line = (pts, w, c) => { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke(); };
+  // 奥側の腕・脚
+  line([B.sh, B.elbow, B.hand], 0.1, '#c98e6a');
+  line([B.hip, B.knee, B.foot], 0.13, '#c98e6a');
+  line([B.hip, [B.knee[0] * 0.4, B.knee[1] * 0.4]], 0.16, '#a81c22');
+  shoe(B, '#d9dde2');
+  // 胴体：白のレオタード（青・紫・赤の筆ストローク柄、赤の縁取り）
+  drawLeotard(J.sh);
+  // 赤のショートパンツ（腰まわり）
+  line([[0, -0.01], [J.sh[0] * 0.1, J.sh[1] * 0.1]], 0.29, '#d8262e');
+  // 手前の脚
+  line([J.hip, J.knee, J.foot], 0.135, '#e8b08a');
+  line([J.hip, [J.knee[0] * 0.42, J.knee[1] * 0.42]], 0.17, '#d8262e');
+  shoe(J, '#ffffff');
+  // 頭
+  const hd = J.head, ta = o.to;
+  ctx.fillStyle = '#e8b08a'; ctx.beginPath(); ctx.arc(hd[0], hd[1], 0.12, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#2b1d14'; ctx.beginPath(); ctx.arc(hd[0], hd[1], 0.125, 0, TAU); ctx.fill();
+  // 顔（前方向に目）
+  const fwd = dirv(ta - Math.PI / 2, 1); // 体の前方向
+  const up = dirv(ta, 1);
+  ctx.fillStyle = '#e8b08a'; ctx.beginPath();
+  ctx.arc(hd[0] + fwd[0] * 0.035 - up[0] * 0.01, hd[1] + fwd[1] * 0.035 - up[1] * 0.01, 0.1, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#222'; ctx.beginPath();
+  ctx.arc(hd[0] + fwd[0] * 0.08 + up[0] * 0.02, hd[1] + fwd[1] * 0.08 + up[1] * 0.02, 0.016, 0, TAU); ctx.fill();
+  // 手前の腕
+  line([J.sh, J.elbow, J.hand], 0.1, '#e8b08a');
+  ctx.restore();
+}
+function drawIndicator() {
+  if (st !== 'play' || p.contact || p.dir || p.recover || p.finalJump) return;
+  const fixed = !!p.forceDir;
+  const a = fixed ? 1 : Math.min(1, Math.abs(p.lean) / 0.3), f = fixed ? p.forceDir > 0 : p.lean >= 0;
+  const c = [sx(p.x), sy(p.y + 0.35)], R = 1.15 * S;
+  const col = f ? '255,190,40' : '90,200,255';
+  ctx.save(); ctx.globalAlpha = 0.25 + 0.75 * a;
+  ctx.translate(c[0], c[1]); ctx.scale(p.face, 1); ctx.translate(-c[0], -c[1]);
+  ctx.strokeStyle = `rgba(${col},1)`; ctx.lineWidth = 0.09 * S; ctx.lineCap = 'round';
+  const s0 = f ? -Math.PI * 0.8 : -Math.PI * 0.2, e0 = f ? -Math.PI * 0.2 : -Math.PI * 0.8;
+  ctx.beginPath(); ctx.arc(c[0], c[1], R, s0, e0, !f); ctx.stroke();
+  const ex = c[0] + R * Math.cos(e0), ey = c[1] + R * Math.sin(e0);
+  const tx = (f ? -1 : 1) * -Math.sin(e0), ty = (f ? 1 : -1) * Math.cos(e0);
+  const hs = 0.22 * S;
+  ctx.fillStyle = `rgba(${col},1)`; ctx.beginPath();
+  ctx.moveTo(ex + tx * hs, ey + ty * hs);
+  ctx.lineTo(ex - ty * hs * 0.7, ey + tx * hs * 0.7);
+  ctx.lineTo(ex + ty * hs * 0.7, ey - tx * hs * 0.7); ctx.fill();
+  ctx.restore();
+  txt(LANG === 'en' ? (fixed ? 'NEXT: ' : '') + (f ? 'FRONT' : 'BACK') : (fixed ? '次は' : '') + (f ? '前宙' : '後宙'), c[0], c[1] - R - 0.25 * S, Math.round(0.32 * S), f ? '#ffd23f' : '#7fe0ff', 'center', 0.3 + 0.7 * a);
+}
+function drawHUD() {
+  const fs = Math.max(14, Math.min(22, W / 22));
+  if (st === 'title' || st === 'splash' || st === 'list') return;   // タイトルでは点数を出さない
+  drawTutorial(fs);
+  txt(f3(score), 16, 30 + fs * 0.4, fs * 1.9, '#fffbe6', 'left');
+  txt('BEST ' + f3(best), W - 16, 26, fs * 0.9, '#fff', 'right');
+  if (st === 'play' || st === 'crash') {
+    const h = Math.max(0, p.y - 0.9);
+    const stage = el.length === 0 ? L('ストレートジャンプ：技を決めると演技開始', 'Straight jumps – land a skill to start') : p.final ? L('最後はストレートジャンプで止まる', 'Finish: straight jump and stick it') : L(`演技中　技 ${el.length}/10`, `Routine  skill ${el.length}/10`);
+    txt(stage, 16, 30 + fs * 2.2, fs * 0.8, el.length === 0 ? '#dfefff' : '#ffe9a8', 'left');
+    txt(`${L('高さ', 'Height')} ${h.toFixed(1)}m`, 16, 30 + fs * 3.3, fs * 0.8, '#fff', 'left');
+  }
+  for (const q of pops) {
+    const a = q.t < 1 ? 1 : 1 - (q.t - 1) / 0.4;
+    txt(q.text, Math.min(W - 80, Math.max(80, sx(q.x))), sy(q.y), Math.round(fs * 1.3 * q.size), q.color, 'center', a);
+  }
+}
+function panel(lines, reserve = 0, side = false) {
+  let h = 30 + lines.reduce((t, l) => t + l[1] * 1.55, 0);
+  const room = side ? H - 90 : H - reserve - 70;      // 下（横画面では右）のボタンと重ならない大きさに収める
+  if ((reserve || side) && h > room) { const k = Math.max(0.4, room / h); lines = lines.map(([s, z, c]) => [s, z * k, c]); h = 30 + lines.reduce((t, l) => t + l[1] * 1.55, 0); }
+  const w = side ? Math.min(W * 0.58, 440) : Math.min(W - 32, 420);
+  const x = side ? Math.max(16, W / 2 - w - 8) : (W - w) / 2;
+  const y = side ? Math.max(60, (H - h) / 2 + 10) : reserve ? Math.max(56, Math.min(H * 0.16, H - reserve - h - 12)) : H * 0.16;
+  ctx.fillStyle = 'rgba(12,28,58,.9)';
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, 18) : ctx.rect(x, y, w, h); ctx.fill();
+  let yy = y + 34;
+  for (const [s, size, col] of lines) {
+    ctx.font = `900 ${size}px ${FONT}`; const tw = ctx.measureText(s).width;   // 幅に収まらない行は縮める
+    txt(s, x + w / 2, yy, tw > w - 28 ? size * (w - 28) / tw : size, col); yy += size * 1.55;
+  }
+  return {x, y, w, h};
+}
+function button(b, label, sub, bg, fg) {
+  ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(b.x, b.y, b.w, b.h, 12) : ctx.rect(b.x, b.y, b.w, b.h); ctx.fill();
+  // ボタンの文字は縁取りなしでくっきり描く
+  const plain = (t, y, size, weight) => { ctx.save(); ctx.font = `${weight} ${size}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = fg; ctx.fillText(t, b.x + b.w / 2, y); ctx.restore(); };
+  plain(label, b.y + b.h * (sub ? 0.4 : 0.5), Math.min(22, b.h * 0.4), 900);
+  if (sub) plain(sub, b.y + b.h * 0.76, Math.min(12, b.h * 0.22), 700);
+}
+const wideTitle = () => W > H * 1.25 && H < 560;   // 横長で背の低い画面
+function drawTitleButtons(pb, fs) {
+  if (wideTitle()) {                                   // パネルの右に縦並び
+    const bx = pb.x + pb.w + 16, bw2 = Math.min(220, W - bx - 16), bh2 = Math.min(64, (H - 120) / 3.4);
+    const by = Math.max(60, H / 2 - (bh2 * 2 + bh2 * 0.7 + 20) / 2 + 10);
+    const bN = {x: bx, y: by, w: bw2, h: bh2, act: () => startGame('normal')};
+    const bH = {x: bx, y: by + bh2 + 10, w: bw2, h: bh2, act: () => startGame('hard')};
+    const bL = {x: bx, y: by + bh2 * 2 + 20, w: bw2, h: bh2 * 0.7, act: openList};
+    return drawBtns(bN, bH, bL);
+  }
+  const gap = 10, bw = (pb.w - gap) / 2, bh = Math.max(50, fs * 3.2);
+  const lh = Math.max(34, fs * 2);
+  const y = Math.min(pb.y + pb.h + 12, H - bh - 8 - lh - 30);
+  const bN = {x: pb.x, y, w: bw, h: bh, act: () => startGame('normal')};
+  const bH = {x: pb.x + bw + gap, y, w: bw, h: bh, act: () => startGame('hard')};
+  const bL = {x: pb.x + bw + gap, y: y + bh + 8, w: bw, h: lh, act: openList};
+  drawBtns(bN, bH, bL);
+}
+function drawBtns(bN, bH, bL) {
+  titleBtns = [bN, bH, bL];
+  let bestN = 0, bestH = 0; try { bestN = +localStorage.getItem('tflip_best2_normal') || 0; bestH = +localStorage.getItem('tflip_best2_hard') || 0; } catch (e) {}
+  button(bN, 'NORMAL', 'BEST ' + f3(bestN), '#ffd23f', '#1b2a4a');
+  button(bH, 'HARD', 'BEST ' + f3(bestH), '#e0464f', '#fff');
+  button(bL, L('HARDの技一覧', 'HARD SKILL LIST'), '', '#ffffff', '#1b2a4a');
+}
+// ---- HARDの技一覧（HTMLで表示、スクロール可） ----
+function openList() {
+  st = 'list';
+  let el2 = document.getElementById('skillList');
+  if (!el2) {
+    el2 = document.createElement('div'); el2.id = 'skillList';
+    el2.style.cssText = 'position:fixed;inset:0;overflow:auto;background:rgba(10,24,52,.97);color:#fff;font-family:' + FONT + ';z-index:10;padding:16px 14px 90px;-webkit-overflow-scrolling:touch;touch-action:pan-y';
+    const SH = LANG === 'en' ? {L: 'Straight', P: 'Pike', T: 'Tuck'} : {L: '伸身', P: '屈身', T: '抱え込み'};
+    const frac = t => (Math.floor(t / 2) ? Math.floor(t / 2) + (t % 2 ? ' ' : '') : '') + (t % 2 ? '1/2' : '');
+    const tw = h => { const t = h.reduce((a, b) => a + b, 0); return LANG === 'en' ? (t ? `${frac(t)} twist` : 'no twist') : (t ? `${frac(t)}回ひねり` : 'ひねりなし'); };
+    let html = `<div style="max-width:560px;margin:0 auto"><h2 style="margin:4px 0 6px;color:#ffd23f;font-size:22px">${L('HARDの技一覧', 'HARD Skill List')}</h2>`
+      + `<p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#dfefff">${L('回転数（1〜3回宙返り）と方向（前方・後方）ごとに5種類あり、その技を使うたびに①→⑤の順で自動で切り替わります。何回宙返りの技になるかは、押した瞬間の残りの滞空時間で決まります（高い位置で早めに押すほど多回転）。', 'There are 5 skills for each direction (forward / backward) and number of somersaults (1–3). Each time you use one, the next of ①→⑤ comes up automatically. How many somersaults you get depends on the airtime left when you press (press early and high for more). Skills are shown in FIG numeric notation.')}</p>`;
+    for (const [dir, dl] of [[1, L('前方', 'Forward')], [-1, L('後方', 'Backward')]]) for (const n of [1, 2, 3]) {
+      html += `<h3 style="margin:16px 0 6px;font-size:16px;color:${dir > 0 ? '#ffd23f' : '#7fe0ff'}">${LANG === 'en' ? `${dl} – ${['single', 'double', 'triple'][n - 1]} somersault` : `${dl}${n}回宙返り`}</h3><table style="width:100%;border-collapse:collapse;font-size:13px">`;
+      SKILLS[dir][n].forEach((k, i) => {
+        const main = LANG === 'en' ? numeric(n, k.h, k.s) : k.n, sub = LANG === 'en' ? `${SH[k.s]} · ${tw(k.h)}` : `${SH[k.s]}・${tw(k.h)}・${numeric(n, k.h, k.s)}`;
+        html += `<tr style="border-top:1px solid rgba(255,255,255,.15)"><td style="padding:6px 4px;width:22px;color:#ffe9a8">${'①②③④⑤'[i]}</td><td style="padding:6px 4px">${main}<div style="font-size:11px;color:#9fb6cc">${sub}</div></td><td style="padding:6px 4px;text-align:right;white-space:nowrap;font-weight:900">D ${difficulty(n, k.h, k.s, dir).toFixed(1)}</td></tr>`;
+      });
+      html += '</table>';
+    }
+    html += `<p style="margin:16px 0 0;font-size:12px;color:#9fb6cc;line-height:1.6">${L('難度点は 1/4宙返りごと0.1、宙返り1回ごと＋0.1、3回宙は＋0.1、1/2ひねりごと0.1、屈身・伸身の加点、多回転のひねり加点、後方多回転の加点（2025年〜の規則）で計算しています。', 'Difficulty: 0.1 per 1/4 somersault, +0.1 per completed somersault, +0.1 more for triples, 0.1 per 1/2 twist, plus bonuses for pike/straight, twists in multiple somersaults and backward multiple somersaults (FIG 2025– rules).')}</p></div>`
+      + `<button id="listBack" style="position:fixed;left:50%;bottom:18px;transform:translateX(-50%);padding:14px 40px;font-size:18px;font-weight:900;border:0;border-radius:14px;background:#ffd23f;color:#1b2a4a;font-family:inherit">${L('戻る', 'BACK')}</button>`;
+    el2.innerHTML = html;
+    document.body.appendChild(el2);
+    el2.querySelector('#listBack').addEventListener('click', e => { e.stopPropagation(); el2.style.display = 'none'; st = 'title'; });
+    el2.addEventListener('pointerdown', e => e.stopPropagation());
+  }
+  el2.style.display = 'block';
+}
+function drawOverlay() {
+  const fs = Math.max(14, Math.min(20, W / 24));
+  if (st === 'title') {
+    const pb = panel([
+      ['TRAMPOLINE FLIP', fs * 1.8, '#ffd23f'],
+      ...(LANG === 'en' ? [
+      ['▼ HOW TO PLAY', fs * 0.9, '#ffe9a8'],
+      ['Jumping is automatic', fs * 0.85, '#fff'],
+      ['Hold to rotate, release to open', fs * 0.85, '#fff'],
+      ['Open just before your feet reach 12 o\'clock', fs * 0.85, '#fff'],
+      ['Facing right, front skills: 10:45–12:15 = PERFECT', fs * 0.85, '#fff'],
+      ['Press when the arrow says FRONT for front skills', fs * 0.85, '#fff'],
+      ['and when it says BACK for back skills', fs * 0.85, '#fff'],
+      ['On PC: hold the mouse button or the Space key', fs * 0.85, '#fff'],
+      ['▼ ROUTINE', fs * 0.9, '#ffe9a8'],
+      ['10 skills in a row from your first skill', fs * 0.82, '#b6ff6a'],
+      ['Front and back skills alternate', fs * 0.82, '#b6ff6a'],
+      ['NORMAL: 1–3 somersaults, shape Straight→Pike→Tuck', fs * 0.82, '#b6ff6a'],
+      ['HARD: 30 twisting skills come up in order', fs * 0.82, '#b6ff6a'],
+      ['After skill 10, straight jump and stick it', fs * 0.82, '#b6ff6a'],
+      ['Off-center landings drift you out (PERFECT = back to center)', fs * 0.82, '#b6ff6a'],
+      ['▼ CAREFUL', fs * 0.9, '#ffe9a8'],
+      ['A straight jump mid-routine ends the routine', fs * 0.82, '#ffb36b'],
+      ['Front / back drops score 0 but you continue', fs * 0.82, '#ffb36b'],
+      ['Landing on your head ends the game', fs * 0.82, '#ffb36b'],
+      ] : [
+      ['▼ 操作', fs * 0.9, '#ffe9a8'],
+      ['ジャンプは自動', fs * 0.85, '#fff'],
+      ['長押ししている間だけ回転', fs * 0.85, '#fff'],
+      ['足が真上（12時）に届く手前で離すと きれいに開く', fs * 0.85, '#fff'],
+      ['右向きの前方系なら10時45分〜12時15分がPERFECT', fs * 0.85, '#fff'],
+      ['矢印が「前宙」のとき押すと前方系', fs * 0.85, '#fff'],
+      ['「後宙」のとき押すと後方系', fs * 0.85, '#fff'],
+      ['PCはマウスかスペースキーを長押し', fs * 0.85, '#fff'],
+      ['▼ 演技', fs * 0.9, '#ffe9a8'],
+      ['最初の技から連続10本の合計点で勝負', fs * 0.82, '#b6ff6a'],
+      ['演技中は前方系と後方系が交互になる', fs * 0.82, '#b6ff6a'],
+      ['NORMAL：技は前後×1〜3回宙、姿勢はL→P→T', fs * 0.82, '#b6ff6a'],
+      ['HARD：ひねり入りの30技が順番に自動で入る', fs * 0.82, '#b6ff6a'],
+      ['10本目のあとはストレートジャンプでビタ止め', fs * 0.82, '#b6ff6a'],
+      ['着地がずれると端へ移動（PERFECTで真ん中に戻る）', fs * 0.82, '#b6ff6a'],
+      ['▼ 注意', fs * 0.9, '#ffe9a8'],
+      ['演技中にストレートジャンプすると中断', fs * 0.82, '#ffb36b'],
+      ['腹落ち・背落ちは0点で続行', fs * 0.82, '#ffb36b'],
+      ['頭から落ちたら終了', fs * 0.82, '#ffb36b'],
+      ]),
+    ], Math.max(50, fs * 3.2) + 8 + Math.max(34, fs * 2) + 12 + 30, wideTitle());
+    drawTitleButtons(pb, fs);
+  } else if (st === 'over') {
+    const sc = calcScore();
+    const head = endReason === '演技終了' ? [L('演技終了', 'ROUTINE COMPLETE'), '#ffd23f'] : endReason === '中断' ? [L(`中断（${el.length}本）`, `INTERRUPTED (${el.length})`), '#ffb36b'] : [L(`転倒（${el.length}本）`, `FELL (${el.length})`), '#ff8a8a'];
+    const lines = [
+      [(mode === 'hard' ? 'HARD ' : 'NORMAL ') + head[0], fs * 1.5, head[1]],
+      [L('合計 ', 'TOTAL ') + f3(score), fs * 1.4, '#fff'],
+      [`D ${f1(sc.D)}　E ${f1(sc.E)}　T ${f3(sc.T)}　H ${f1(sc.H)}`, fs * 0.8, '#ffe9a8'],
+      [newBest ? 'NEW RECORD!' : 'BEST ' + f3(best), fs * 1.0, newBest ? '#ffd23f' : '#dfefff'],
+    ];
+    if (el.length === 0) lines.push([L('技なし', 'No skills'), fs * 0.8, '#dfefff']);
+    el.forEach((e, i) => lines.push([`${i + 1}. ${e.name}　D${f1(e.d)}　E${e.ded ? '−' + f1(e.ded) : '±0'}${e.hd ? '　H−' + f1(e.hd) : ''}`, fs * 0.78, e.d > 0 ? '#ffffff' : '#9fb6cc']));
+    const bh1 = 50, bh2 = 42;
+    const pb = panel(lines, bh1 + 8 + bh2 + 12 + 26);
+    const y1 = Math.min(pb.y + pb.h + 10, H - bh1 - 8 - bh2 - 26), gap = 8, w3 = (pb.w - gap * 2) / 3;
+    resultBtns = [
+      {x: pb.x, y: y1, w: pb.w, h: bh1, act: shareNative, label: L('結果をシェア', 'SHARE RESULT'), bg: '#ffd23f', fg: '#1b2a4a'},
+      {x: pb.x, y: y1 + bh1 + gap, w: w3, h: bh2, act: shareX, label: 'X', bg: '#000000', fg: '#ffffff'},
+      {x: pb.x + w3 + gap, y: y1 + bh1 + gap, w: w3, h: bh2, act: shareLINE, label: 'LINE', bg: '#06c755', fg: '#ffffff'},
+      {x: pb.x + (w3 + gap) * 2, y: y1 + bh1 + gap, w: w3, h: bh2, act: () => { st = 'title'; }, label: L('タイトルへ', 'TITLE'), bg: '#ffffff', fg: '#1b2a4a'},
+    ];
+    if (overT > 0.6) for (const b of resultBtns) button(b, b.label, '', b.bg, b.fg);
+  }
+  ctx.save(); ctx.globalAlpha = 0.85; ctx.fillStyle = 'rgba(10,30,60,.55)';
+  ctx.beginPath(); ctx.arc(34, H - 34, 20, 0, TAU); ctx.fill(); ctx.restore();
+  txt('♪', 34, H - 34, 20, muted ? 'rgba(255,255,255,.4)' : '#fff');
+  if (muted) { ctx.strokeStyle = '#ff7070'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(22, H - 46); ctx.lineTo(46, H - 22); ctx.stroke(); }
+  backBtn = null;
+  if (st === 'title') {   // ◀ 言語選択へ戻る
+    const lb = LANG === 'en' ? '◀ LANGUAGE' : '◀ 言語選択';
+    ctx.font = `800 13px ${FONT}`; const bw = ctx.measureText(lb).width + 26;
+    const bl = titleBtns[2];   // 横長の画面では右側のボタン列の下に置く
+    backBtn = wideTitle() && bl && bl.y + bl.h + 52 < H ? {x: bl.x + (bl.w - bw) / 2, y: bl.y + bl.h + 10, w: bw, h: 40} : {x: 62, y: H - 54, w: bw, h: 40};
+    ctx.save(); ctx.globalAlpha = 0.9; ctx.fillStyle = 'rgba(10,30,60,.6)';
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(backBtn.x, backBtn.y, bw, 40, 20) : ctx.rect(backBtn.x, backBtn.y, bw, 40); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(lb, backBtn.x + bw / 2, backBtn.y + 21);
+  }
+  txt('v1.5', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
+}
+function draw() {
+  drawBackground();
+  drawTrampBack();
+  drawPlayer();
+  drawTrampFront();
+  drawIndicator();
+  drawHUD();
+  drawOverlay();
+  if (st === 'splash') drawSplash();
+}
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.033, (now - last) / 1000); last = now;
+  if (tutTip) { tutTip.t += dt; if (tutTip.t > 2.6) tutTip = null; }
+  const slow = tutOn && st === 'play' && holding && el.length < 2 ? 0.5 : 1;   // 練習中は回転をゆっくり
+  syncSize(); update(dt * slow); draw(); requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
