@@ -312,8 +312,8 @@ let el = [], endReason = '', lastDir = 0;
 const SHAPES = ['L', 'P', 'T'];   // 伸身 → 屈身 → 抱え込み の順に自動で変わる
 const SHAPE_JA = {L: '伸身', P: '屈身', T: '抱え込み'};
 let dirCount = {1: 0, '-1': 0};   // 方向ごとに決めた宙返りの本数   // lastDir: 直前の技の方向（+1前/-1後）   // 演技（10本）の記録
-let mode = 'normal';   // 'normal'＝技6種類 ／ 'hard'＝30技
-const bestKey = () => `tflip_best2_${mode}`;   // 採点ルール変更（v1.3）で記録をリセット
+let mode = 'hard';   // v1.7でNORMALは廃止（30技のモードひとつに統合）
+const bestKey = () => 'tflip_best3';   // v1.7：踏み込み・重複ルールで記録をリセット
 function loadBest() { try { best = +localStorage.getItem(bestKey()) || 0; } catch (e) { best = 0; } }
 loadBest();
 
@@ -358,7 +358,7 @@ function resetPlayer() {
 function startGame(m) {
   if (m) { mode = m; loadBest(); }
   tutOn = !tutDone; tutTip = null;
-  st = 'play'; score = 0; jumps = 0; totalFlips = 0; combo = 0; maxCombo = 0; pops = []; newBest = false; el = []; endReason = ''; lastDir = 0; dirCount = {1: 0, '-1': 0}; skillCount = {};
+  st = 'play'; score = 0; jumps = 0; totalFlips = 0; combo = 0; maxCombo = 0; pops = []; newBest = false; el = []; endReason = ''; lastDir = 0; dirCount = {1: 0, '-1': 0}; skillCount = {}; usedSkills = new Set();
   resetPlayer();
 }
 resetPlayer();
@@ -386,7 +386,9 @@ const SKILLS = {
     3: [{n: 'ハーフイン・トリフィス・ルディー', h: [1, 0, 3], s: 'P'}, {n: 'ハーフイン・トリフィス・ルディー', h: [1, 0, 3], s: 'T'}, {n: 'ハーフイン・トリフィス・バラニー', h: [1, 0, 1], s: 'P'}, {n: 'ハーフイン・トリフィス・バラニー', h: [1, 0, 1], s: 'T'}, {n: 'フルイン・フル・フルアウト', h: [2, 2, 2], s: 'L'}],
   },
 };
-let skillCount = {};   // 「方向_回転数」ごとに決めた本数
+let skillCount = {};
+let usedSkills = new Set();   // 演技中に出した技（同じ技の2回目からは難度0＝重複）
+let kickPress = false;        // 踏み込みのタップ中（回転には使わない）   // 「方向_回転数」ごとに決めた本数
 const SHAPE_SYM = {T: 'o', P: '<', L: '/'};
 const numeric = (n, h, sh) => `${n * 4} ${h.join(' ')} ${SHAPE_SYM[sh]}`;
 // 踏み切ってから押した瞬間の残り時間で、何回宙返りを狙うかを決める
@@ -500,7 +502,7 @@ function down(x, y) {
     return;
   }
   if (st === 'title') {
-    if (x === undefined) { startGame('normal'); return; }
+    if (x === undefined) { startGame('hard'); return; }
     if (backBtn && hit(backBtn, x, y)) { st = 'splash'; splashT = INTRO; return; }
     if (installBtn && hit(installBtn, x, y)) { doInstall(); return; }   // 言語選択の画面へ戻る（演出は飛ばす）
     for (const b of titleBtns) if (hit(b, x, y)) { b.act(); return; }
@@ -512,9 +514,17 @@ function down(x, y) {
     pressedBtn = resultBtns.find(b => hit(b, x, y)) || null;
     return;
   }
-  if (st === 'play') holding = true;
+  if (st === 'play') {
+    // 踏み込み：ベッドに乗っている間（＋着地の少し手前）のタップは高さ用。回転には使わない
+    const onBed = p.contact && !p.stick && !p.drop;
+    if (p.routineH == null && el.length === 0 && !p.finalJump && (onBed || (!p.contact && p.vy < 0 && timeToLand() < 0.4))) {   // 予備ジャンプ中だけ
+      if (p.kickT == null) p.kickT = onBed ? p.contactT : -timeToLand();
+      kickPress = true; return;
+    }
+    if (!kickPress) holding = true;
+  }
 }
-function up() { holding = false; }
+function up() { holding = false; kickPress = false; }
 function toggleMute() { muted = !muted; try { localStorage.setItem('tflip_mute', muted ? '1' : '0'); } catch (e) {} }
 cv.addEventListener('pointerdown', e => {
   e.preventDefault(); initAudio(); syncSize();
@@ -565,7 +575,22 @@ function launch() {
   }
   p.bounceN++;
   let h = Math.min(st === 'title' ? 2.4 : MAXH, 1.0 + p.bounceN * 1.3);
-  if (st === 'play' && h >= MAXH) h -= Math.random() * 0.8;   // 最高点付近は毎回少し高さが変わる
+  if (st === 'play' && !p.recover) {
+    if (p.routineH != null) h = p.routineH - [0, 0.4, 0.8][Math.abs(p.pos || 0)];   // 技に入ったら固定。センターを外した所から跳ぶと低くなる（少しズレ−0.4m／大きなズレ−0.8m、センターに戻ればMAX）
+    else if (p.bounceN > 1) {                 // 予備ジャンプ：踏み込むたびに高くなる
+      const kt = p.kickT; let inc;
+      if (kt == null) { inc = -0.8; pop(L('踏み込みなし', 'NO KICK'), '#9fb6cc', 0.75, -1.2); }
+      else {
+        const early = Math.max(0, (CT / 2 - 0.3) - kt), frac = Math.min(1, early / 0.2);   // 着地0.17秒前〜ベッドの底までは満点
+        inc = 1.3 * (1 - 0.6 * frac);
+        pop(frac ? L('踏み込み 早い', 'KICK EARLY') : L('ナイス踏み込み！', 'GREAT KICK!'), frac ? '#ffb36b' : '#7fe0ff', 0.75, -1.2);
+      }
+      h = Math.max(2.3, Math.min(MAXH, (p.curH || 2.3) + inc));
+      if (h >= MAXH && inc > 0) pop(L('高さMAX！', 'MAX HEIGHT!'), '#ffd23f', 0.8, -1.9);
+    }
+    if (!p.finalJump) p.curH = h;
+  }
+  p.kickT = null;
   if (p.finalJump && !p.recover) h = 2.4;
   p.vy = Math.sqrt(2 * G * h); p.apex = 0;
   if (st === 'play') jumps++;
@@ -607,7 +632,7 @@ function moveTo(level) {
 }
 const f1 = v => v.toFixed(1), f3 = v => v.toFixed(3);
 // ---- 初回だけの練習ガイド（最初の3本） ----
-let tutDone = false; try { tutDone = localStorage.getItem('tflip_tut') === '1'; } catch (e) {}
+let tutDone = false; try { tutDone = localStorage.getItem('tflip_tut2') === '1'; } catch (e) {}
 let tutOn = false, tutTip = null;
 function tutAfter(ded) {
   if (!tutOn) return;
@@ -616,7 +641,7 @@ function tutAfter(ded) {
     : p.lastErr < 0 ? [L('少し早かった！', 'A little early!'), L('もう少し待ってから離そう', 'Hold a bit longer before releasing')]
     : [L('少し遅かった！', 'A little late!'), L('もう少し早めに離そう', 'Release a bit earlier')];
   tutTip = {a: tip[0], b: tip[1], t: 0};
-  if (el.length >= 3) { tutOn = false; tutDone = true; try { localStorage.setItem('tflip_tut', '1'); } catch (e) {} }
+  if (el.length >= 3) { tutOn = false; tutDone = true; try { localStorage.setItem('tflip_tut2', '1'); } catch (e) {} }
 }
 function drawTutorial(fs) {
   let a = null, b = null;
@@ -624,15 +649,16 @@ function drawTutorial(fs) {
   if (tutTip && tutTip.t < 2.6) { a = tutTip.a; b = tutTip.b; }
   else if (tutOn && st === 'play') {
     if (holding) { a = L('足が真上に来る手前で離す！', 'Let go just before your feet point up!'); b = L('離すと体が開いて着地の準備', 'Releasing opens your body for landing'); }
-    else if (el.length === 0) { a = L('跳んでいる間に長押しで回転！', 'Hold while in the air to flip!'); b = L('PCはマウスかスペースキー', 'On PC: mouse button or Space'); }
+    else if (el.length === 0) { a = L('着地でタン！で高く', 'Tap on landing to go higher'); b = L('MAXになったらタンタンで技へ（以後、高さは固定）', 'At MAX, tap-tap into a skill (height then stays)'); }
   }
   if (!a) return;
   const y = 30 + fs * 4.6, w = Math.min(W - 24, 460), h = fs * 3.1, x = (W - w) / 2;
   ctx.save(); ctx.globalAlpha = 0.92; ctx.fillStyle = 'rgba(10,24,52,.85)';
   ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, 14) : ctx.rect(x, y, w, h); ctx.fill();
   ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
-  txt(a, W / 2, y + h * 0.36, fs * 1.0, '#ffd23f');
-  txt(b, W / 2, y + h * 0.72, fs * 0.72, '#ffffff');
+  const fit = (t, sz) => { ctx.font = `900 ${sz}px ${FONT}`; const m = ctx.measureText(t).width; return m > w - 28 ? sz * (w - 28) / m : sz; };   // 枠からはみ出さないよう縮める
+  txt(a, W / 2, y + h * 0.36, fit(a, fs * 1.0), '#ffd23f');
+  txt(b, W / 2, y + h * 0.72, fit(b, fs * 0.72), '#ffffff');
 }
 function addElement(name, d, ded, t, hd) {
   el.push({name, d, ded: ded * 2, t: tScore(t), hd: hd || 0}); score = Math.round(calcScore().total * 1000) / 1000;
@@ -667,11 +693,13 @@ function touchdown() {
       const grade = aa < 0.12 ? ['PERFECT!', 0, '#ff7ab8'] : aa < 0.35 ? ['GOOD', aa < 0.235 ? 0.1 : 0.2, '#b6ff6a'] : [L('着地乱れ', 'SHAKY'), aa < 0.55 ? 0.3 : 0.4, '#ffb36b'];
       const dir = Math.sign(turns), sh = p.plan ? p.plan.s : (p.shape || 'T');
       if (doneH.length !== n) doneH = Array(n).fill(0);
-      const dd = difficulty(n, doneH, sh, dir), nm = skillName(n, doneH, sh, dir);
+      const skKey = `${dir}|${n}|${doneH.join(',')}|${sh}`, dup = usedSkills.has(skKey);   // 宙返り・各宙返りのひねり・姿勢がすべて同じ＝同じ技
+      usedSkills.add(skKey);
+      const dd = dup ? 0 : difficulty(n, doneH, sh, dir), nm = skillName(n, doneH, sh, dir) + (dup ? L('（重複）', ' (REPEAT)') : '');
       if (p.plan && p.plan.normal) dirCount[dir] = (dirCount[dir] || 0) + 1;
       else if (p.plan && n === p.plan.n) skillCount[`${dir}_${n}`] = (skillCount[`${dir}_${n}`] || 0) + 1;
       pop(nm, turns > 0 ? '#ffd23f' : '#7fe0ff', 1.0, 0.5);
-      pop(`D ${f1(dd)}`, '#fff', 1.0, 0);
+      pop(dup ? L('重複 D0', 'REPEAT D0') : `D ${f1(dd)}`, dup ? '#ff9a9a' : '#fff', 1.0, 0);
       const hd = moveTo(aa < 0.12 ? 0 : aa < 0.35 ? 1 : 2);
       pop(grade[0] + (grade[1] ? ` E−${f1(grade[1] * 2)}` : '') + (hd ? ` H−${f1(hd)}` : ''), grade[2], 0.9, -0.5);
       aa < 0.12 ? sfx.perfect() : sfx.good();
@@ -742,7 +770,11 @@ function openBody() {
   const phi = p.th * p.dir;                 // 回った角度（進行方向を正）
   if (phi < Math.PI / 2) return;            // ほとんど回っていない軽いタップは開き扱いにしない
   const m = phi % TAU;                      // 今の宙返りの中での位置（π＝足が真上＝12時）
-  const eDeg = (m - Math.PI) * 180 / Math.PI;
+  // 判定は「体が伸び切って、つま先が指した角度」。伸び切るまでも回り続けるので、
+  // タック（60°）・パイク（35°）は離した瞬間より先の角度で判定＝早めに離す必要がある。レイアウトはそのまま
+  const shp = (p.plan && p.plan.s) || p.shape || 'L', lead = {T: 60, P: 35}[shp] || 0;
+  const eDeg = (m - Math.PI) * 180 / Math.PI + lead;
+  p.openRate = lead ? 3 / Math.max(0.03, lead * Math.PI / 180 / Math.max(1, Math.abs(p.w))) : 60;   // 伸び切るまでの速さ
   const nEnd = Math.floor(phi / TAU) + 1;   // この宙返りを回り切る
   p.opened = true; p.openPhi = phi; p.lastErr = eDeg + 15;   // ＋なら遅い、−なら早い（理想は−15°）
   p.openTarget = p.dir * (nEnd * TAU + openLanding(eDeg) * Math.PI / 180);
@@ -772,11 +804,11 @@ function airUpdate(dt) {
     p.tuck *= Math.exp(-dt * 10); p.w = 0;
   } else if (p.opened) {
     // 開いた後：着地の瞬間に目標の角度になるよう、伸びたまま回る
-    p.openK += (1 - p.openK) * (1 - Math.exp(-dt * 22));
+    p.openK += (1 - p.openK) * (1 - Math.exp(-dt * (p.openRate || 22)));
     const rem = timeToLand();
     if (rem > 0.03) p.w = Math.max(-16, Math.min(16, (p.openTarget - p.th) / rem));
   } else if (holding && st === 'play' && !p.finalJump) {
-    if (!p.dir) { p.dir = p.forceDir || (p.lean >= 0 ? 1 : -1); planSkill(); }
+    if (!p.dir) { p.dir = p.forceDir || (p.lean >= 0 ? 1 : -1); planSkill(); if (p.routineH == null) p.routineH = p.curH || MAXH; }   // 最初の技でその高さに固定
     p.w += (p.dir * TW - p.w) * (1 - Math.exp(-dt * 9));
     p.tuck += (1 - p.tuck) * (1 - Math.exp(-dt * 14));
     p.wasHolding = true;
@@ -824,7 +856,7 @@ function crashUpdate(dt) {
   p.tuck *= Math.exp(-dt * 3);
   const low = lowest();
   const ax = Math.abs(p.x);
-  const floor = ax < 2.5 ? 0 : ax < 4.2 ? GROUND + 0.3 : GROUND;
+  const floor = ax < FX + 1.8 ? 0 : GROUND;   // エンドデッキはベッドと同じ高さ
   if (low < floor) {
     p.y += floor - low;
     if (p.vy < 0) {
@@ -846,11 +878,11 @@ const SITE = 'https://trampoline-flip.netlify.app/';
 let cardFile = null, resultBtns = [], pressedBtn = null;
 const shareUrl = () => LANG === 'en' ? SITE + 'en/' : SITE;
 function shareText() {
-  const sc = calcScore(), m = mode === 'hard' ? 'HARD' : 'NORMAL';
+  const sc = calcScore();
   const dets = `D ${f1(sc.D)} / E ${f1(sc.E)} / T ${f3(sc.T)} / H ${f1(sc.H)}`;
   return LANG === 'en'
-    ? `I scored ${f3(score)} in TRAMPOLINE FLIP (${m})!${newBest ? ' New record!' : ''}\n${dets}\n#TrampolineFlip #trampoline`
-    : `TRAMPOLINE FLIP（${m}）で ${f3(score)} 点！${newBest ? '自己ベスト更新！' : ''}\n${dets}\n#TrampolineFlip #トランポリン`;
+    ? `I scored ${f3(score)} in TRAMPOLINE FLIP!${newBest ? ' New record!' : ''}\n${dets}\n#TrampolineFlip #trampoline`
+    : `TRAMPOLINE FLIPで ${f3(score)} 点！${newBest ? '自己ベスト更新！' : ''}\n${dets}\n#TrampolineFlip #トランポリン`;
 }
 function makeCard() {
   cardFile = null;
@@ -864,7 +896,7 @@ function makeCard() {
     g.textBaseline = 'middle'; g.textAlign = 'left';
     g.font = `900 64px ${FONT}`; g.fillStyle = '#ffd23f'; g.fillText('TRAMPOLINE FLIP', 490, 120);
     g.font = `800 34px ${FONT}`; g.fillStyle = '#ffffff';
-    g.fillText((mode === 'hard' ? 'HARD' : 'NORMAL') + (newBest ? (LANG === 'en' ? '   NEW RECORD!' : '   自己ベスト更新！') : ''), 494, 190);
+    g.fillText(newBest ? (LANG === 'en' ? 'NEW RECORD!' : '自己ベスト更新！') : (LANG === 'en' ? 'MY ROUTINE' : '今回の演技'), 494, 190);
     g.font = `900 150px ${FONT}`; g.fillStyle = '#ffffff'; g.fillText(f3(score), 486, 300);
     const items = [['D', f1(sc.D)], ['E', f1(sc.E)], ['T', f3(sc.T)], ['H', f1(sc.H)]];
     items.forEach(([k, v], i) => {
@@ -1024,10 +1056,13 @@ function drawLegs(z, col, lw) {
 }
 function drawMats() {
   for (const e of [-1, 1]) {
-    const x0 = e * 2.75, x1 = e * 4.3;
-    const t = GROUND + 0.3;
-    poly([pz(x0, t, -1.6), pz(x1, t, -1.6), pz(x1, t, 1.6), pz(x0, t, 1.6)], '#2c63c4');
-    poly([pz(x0, t, 1.6), pz(x1, t, 1.6), pz(x1, GROUND, 1.6), pz(x0, GROUND, 1.6)], '#1d4a9c');
+    // エンドデッキ：トランポリンの両端に、パッドと同じ高さで置かれたマット（台の上に厚いマット）
+    const x0 = e * (FX + 0.02), x1 = e * (FX + 1.8), t = 0.02, mb = -0.32;
+    poly([pz(x0, mb, 1.6), pz(x1, mb, 1.6), pz(x1, GROUND, 1.6), pz(x0, GROUND, 1.6)], '#5b6670');   // 台
+    poly([pz(x1, mb, -1.6), pz(x1, mb, 1.6), pz(x1, GROUND, 1.6), pz(x1, GROUND, -1.6)], '#4a545d');
+    poly([pz(x0, t, -1.6), pz(x1, t, -1.6), pz(x1, t, 1.6), pz(x0, t, 1.6)], '#2c63c4');               // マット上面
+    poly([pz(x0, t, 1.6), pz(x1, t, 1.6), pz(x1, mb, 1.6), pz(x0, mb, 1.6)], '#1d4a9c');                // マット前面
+    poly([pz(x1, t, -1.6), pz(x1, t, 1.6), pz(x1, mb, 1.6), pz(x1, mb, -1.6)], '#18408a');
   }
 }
 function drawTrampBack() {
@@ -1223,25 +1258,22 @@ function drawTitleButtons(pb, fs) {
   if (wideTitle()) {                                   // パネルの右に縦並び
     const bx = pb.x + pb.w + 16, bw2 = Math.min(220, W - bx - 16), bh2 = Math.min(64, (H - 120) / 3.4);
     const by = Math.max(60, H / 2 - (bh2 * 2 + bh2 * 0.7 + 20) / 2 + 10);
-    const bN = {x: bx, y: by, w: bw2, h: bh2, act: () => startGame('normal')};
-    const bH = {x: bx, y: by + bh2 + 10, w: bw2, h: bh2, act: () => startGame('hard')};
-    const bL = {x: bx, y: by + bh2 * 2 + 20, w: bw2, h: bh2 * 0.7, act: openList};
-    return drawBtns(bN, bH, bL);
+    const bS = {x: bx, y: by, w: bw2, h: bh2 * 1.4, act: () => startGame('hard')};
+    const bL = {x: bx, y: by + bh2 * 1.4 + 12, w: bw2, h: bh2 * 0.7, act: openList};
+    return drawBtns(bS, bL);
   }
   const gap = 10, bw = (pb.w - gap) / 2, bh = Math.max(50, fs * 3.2);
   const lh = Math.max(34, fs * 2);
   const y = Math.min(pb.y + pb.h + 12, H - bh - 8 - lh - 30);
-  const bN = {x: pb.x, y, w: bw, h: bh, act: () => startGame('normal')};
-  const bH = {x: pb.x + bw + gap, y, w: bw, h: bh, act: () => startGame('hard')};
-  const bL = {x: pb.x + bw + gap, y: y + bh + 8, w: bw, h: lh, act: openList};
-  drawBtns(bN, bH, bL);
+  const bS = {x: pb.x, y, w: pb.w, h: bh, act: () => startGame('hard')};
+  const lw = (pb.w - gap) / 2, bL = {x: pb.x + pb.w - lw, y: y + bh + 8, w: lw, h: lh, act: openList};   // 右半分（左下の言語選択と重ならない）
+  drawBtns(bS, bL);
 }
-function drawBtns(bN, bH, bL) {
-  titleBtns = [bN, bH, bL];
-  let bestN = 0, bestH = 0; try { bestN = +localStorage.getItem('tflip_best2_normal') || 0; bestH = +localStorage.getItem('tflip_best2_hard') || 0; } catch (e) {}
-  button(bN, 'NORMAL', 'BEST ' + f3(bestN), '#ffd23f', '#1b2a4a');
-  button(bH, 'HARD', 'BEST ' + f3(bestH), '#e0464f', '#fff');
-  button(bL, L('HARDの技一覧', 'HARD SKILL LIST'), '', '#ffffff', '#1b2a4a');
+function drawBtns(bS, bL) {
+  titleBtns = [bS, bL];
+  let b3 = 0; try { b3 = +localStorage.getItem('tflip_best3') || 0; } catch (e) {}
+  button(bS, L('演技スタート！ ▶', 'START ROUTINE! ▶'), 'BEST ' + f3(b3), '#e8283a', '#fff');
+  button(bL, L('技一覧', 'SKILL LIST'), '', '#ffffff', '#1b2a4a');
 }
 // ---- HARDの技一覧（HTMLで表示、スクロール可） ----
 function openList() {
@@ -1253,7 +1285,7 @@ function openList() {
     const SH = LANG === 'en' ? {L: 'Straight', P: 'Pike', T: 'Tuck'} : {L: '伸身', P: '屈身', T: '抱え込み'};
     const frac = t => (Math.floor(t / 2) ? Math.floor(t / 2) + (t % 2 ? ' ' : '') : '') + (t % 2 ? '1/2' : '');
     const tw = h => { const t = h.reduce((a, b) => a + b, 0); return LANG === 'en' ? (t ? `${frac(t)} twist` : 'no twist') : (t ? `${frac(t)}回ひねり` : 'ひねりなし'); };
-    let html = `<div style="max-width:560px;margin:0 auto"><h2 style="margin:4px 0 6px;color:#ffd23f;font-size:22px">${L('HARDの技一覧', 'HARD Skill List')}</h2>`
+    let html = `<div style="max-width:560px;margin:0 auto"><h2 style="margin:4px 0 6px;color:#ffd23f;font-size:22px">${L('技一覧', 'Skill List')}</h2>`
       + `<p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#dfefff">${L('回転数（1〜3回宙返り）と方向（前方・後方）ごとに5種類あり、その技を使うたびに①→⑤の順で自動で切り替わります。何回宙返りの技になるかは、押した瞬間の残りの滞空時間で決まります（高い位置で早めに押すほど多回転）。', 'There are 5 skills for each direction (forward / backward) and number of somersaults (1–3). Each time you use one, the next of ①→⑤ comes up automatically. How many somersaults you get depends on the airtime left when you press (press early and high for more). Skills are shown in FIG numeric notation.')}</p>`;
     for (const [dir, dl] of [[1, L('前方', 'Forward')], [-1, L('後方', 'Backward')]]) for (const n of [1, 2, 3]) {
       html += `<h3 style="margin:16px 0 6px;font-size:16px;color:${dir > 0 ? '#ffd23f' : '#7fe0ff'}">${LANG === 'en' ? `${dl} – ${['single', 'double', 'triple'][n - 1]} somersault` : `${dl}${n}回宙返り`}</h3><table style="width:100%;border-collapse:collapse;font-size:13px">`;
@@ -1279,18 +1311,21 @@ function drawOverlay() {
       ['TRAMPOLINE FLIP', fs * 1.8, '#ffd23f'],
       ...(LANG === 'en' ? [
       ['▼ HOW TO PLAY', fs * 0.9, '#ffe9a8'],
-      ['Jumping is automatic', fs * 0.85, '#fff'],
+      ['Warm-up: tap as you hit the bed = KICK', fs * 0.85, '#fff'],
+      ['Each good kick takes you higher (up to MAX)', fs * 0.85, '#fff'],
+      ['Tap-tap into a skill; height then stays fixed', fs * 0.85, '#fff'],
       ['Hold to rotate, release to open', fs * 0.85, '#fff'],
       ['Open just before your feet reach 12 o\'clock', fs * 0.85, '#fff'],
       ['Facing right, front skills: 10:45–12:15 = PERFECT', fs * 0.85, '#fff'],
+      ['Tuck/pike take time to open → release earlier', fs * 0.85, '#fff'],
       ['Press when the arrow says FRONT for front skills', fs * 0.85, '#fff'],
       ['and when it says BACK for back skills', fs * 0.85, '#fff'],
       ['On PC: hold the mouse button or the Space key', fs * 0.85, '#fff'],
       ['▼ ROUTINE', fs * 0.9, '#ffe9a8'],
       ['10 skills in a row from your first skill', fs * 0.82, '#b6ff6a'],
       ['Front and back skills alternate', fs * 0.82, '#b6ff6a'],
-      ['NORMAL: 1–3 somersaults, shape Straight→Pike→Tuck', fs * 0.82, '#b6ff6a'],
-      ['HARD: 30 twisting skills come up in order', fs * 0.82, '#b6ff6a'],
+      ['Repeating the exact same skill scores D 0', fs * 0.82, '#b6ff6a'],
+      ['30 twisting skills come up in order', fs * 0.82, '#b6ff6a'],
       ['After skill 10, straight jump and stick it', fs * 0.82, '#b6ff6a'],
       ['Off-center landings drift you out (PERFECT = back to center)', fs * 0.82, '#b6ff6a'],
       ['▼ CAREFUL', fs * 0.9, '#ffe9a8'],
@@ -1299,18 +1334,21 @@ function drawOverlay() {
       ['Landing on your head ends the game', fs * 0.82, '#ffb36b'],
       ] : [
       ['▼ 操作', fs * 0.9, '#ffe9a8'],
-      ['ジャンプは自動', fs * 0.85, '#fff'],
+      ['予備ジャンプ：ベッドに着く瞬間にタップ＝踏み込み', fs * 0.85, '#fff'],
+      ['踏み込むたびに高くなる（MAXまで）', fs * 0.85, '#fff'],
+      ['タンタンで技へ。以後はその高さで固定', fs * 0.85, '#fff'],
       ['長押ししている間だけ回転', fs * 0.85, '#fff'],
       ['足が真上（12時）に届く手前で離すと きれいに開く', fs * 0.85, '#fff'],
       ['右向きの前方系なら10時45分〜12時15分がPERFECT', fs * 0.85, '#fff'],
+      ['タック・パイクは伸びるまで時間がかかる→早めに離す', fs * 0.85, '#fff'],
       ['矢印が「前宙」のとき押すと前方系', fs * 0.85, '#fff'],
       ['「後宙」のとき押すと後方系', fs * 0.85, '#fff'],
       ['PCはマウスかスペースキーを長押し', fs * 0.85, '#fff'],
       ['▼ 演技', fs * 0.9, '#ffe9a8'],
       ['最初の技から連続10本の合計点で勝負', fs * 0.82, '#b6ff6a'],
       ['演技中は前方系と後方系が交互になる', fs * 0.82, '#b6ff6a'],
-      ['NORMAL：技は前後×1〜3回宙、姿勢はL→P→T', fs * 0.82, '#b6ff6a'],
-      ['HARD：ひねり入りの30技が順番に自動で入る', fs * 0.82, '#b6ff6a'],
+      ['全く同じ技は2回目から難度0（重複）', fs * 0.82, '#b6ff6a'],
+      ['ひねり入りの30技が順番に自動で入る', fs * 0.82, '#b6ff6a'],
       ['10本目のあとはストレートジャンプでビタ止め', fs * 0.82, '#b6ff6a'],
       ['着地がずれると端へ移動（PERFECTで真ん中に戻る）', fs * 0.82, '#b6ff6a'],
       ['▼ 注意', fs * 0.9, '#ffe9a8'],
@@ -1324,7 +1362,7 @@ function drawOverlay() {
     const sc = calcScore();
     const head = endReason === '演技終了' ? [L('演技終了', 'ROUTINE COMPLETE'), '#ffd23f'] : endReason === '中断' ? [L(`中断（${el.length}本）`, `INTERRUPTED (${el.length})`), '#ffb36b'] : [L(`転倒（${el.length}本）`, `FELL (${el.length})`), '#ff8a8a'];
     const lines = [
-      [(mode === 'hard' ? 'HARD ' : 'NORMAL ') + head[0], fs * 1.5, head[1]],
+      [head[0], fs * 1.5, head[1]],
       [L('合計 ', 'TOTAL ') + f3(score), fs * 1.4, '#fff'],
       [`D ${f1(sc.D)}　E ${f1(sc.E)}　T ${f3(sc.T)}　H ${f1(sc.H)}`, fs * 0.8, '#ffe9a8'],
       [newBest ? 'NEW RECORD!' : 'BEST ' + f3(best), fs * 1.0, newBest ? '#ffd23f' : '#dfefff'],
@@ -1372,7 +1410,7 @@ function drawOverlay() {
   if (st === 'title') {   // ◀ 言語選択へ戻る
     const lb = LANG === 'en' ? '◀ LANGUAGE' : '◀ 言語選択';
     ctx.font = `800 13px ${FONT}`; const bw = ctx.measureText(lb).width + 26;
-    const bl = titleBtns[2];   // 横長の画面では右側のボタン列の下に置く
+    const bl = titleBtns[1];   // 横長の画面では右側のボタン列の下に置く
     backBtn = wideTitle() && bl && bl.y + bl.h + 52 < H ? {x: bl.x + (bl.w - bw) / 2, y: bl.y + bl.h + 10, w: bw, h: 40} : {x: 62, y: H - 54, w: bw, h: 40};
     ctx.save(); ctx.globalAlpha = 0.9; ctx.fillStyle = 'rgba(10,30,60,.6)';
     ctx.beginPath(); ctx.roundRect ? ctx.roundRect(backBtn.x, backBtn.y, bw, 40, 20) : ctx.rect(backBtn.x, backBtn.y, bw, 40); ctx.fill();
@@ -1381,7 +1419,7 @@ function drawOverlay() {
     installBtn = null;
     if (canInstall()) drawInstallPill(W / 2, 14);   // ホーム画面に追加（タイトルでは上の空いた所に）
   }
-  txt('v1.6.1', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
+  txt('v1.7', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
 }
 function draw() {
   drawBackground();
