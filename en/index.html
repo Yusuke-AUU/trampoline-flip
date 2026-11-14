@@ -569,14 +569,15 @@ function launch() {
   p.finalJump = p.final;   // 10本目の後は最後のストレートジャンプ
   p.forceDir = st === 'play' && lastDir ? -lastDir : 0;   // 演技中は前後を交互に固定
   if (p.drop) {            // 腹落ち・背落ちからの立て直しジャンプ
-    p.drop = 0; p.recover = true; p.leanK = 0; p.bounceN = 0;
+    p.drop = 0; p.recover = true; p.leanK = 0; p.bounceN = 0; p.rebuild = 1;   // 落ちた後は低く跳んで、次で少し戻し、その次でMAX
   } else {
     p.recover = false; p.th = 0; p.leanK = p.finalJump ? 0 : 1; p.y = footY();
   }
   p.bounceN++;
   let h = Math.min(st === 'title' ? 2.4 : MAXH, 1.0 + p.bounceN * 1.3);
+  if (st === 'play' && p.recover) h = 1.2;   // 腹落ち・背落ちのあとの立て直しジャンプは低く
   if (st === 'play' && !p.recover) {
-    if (p.routineH != null) h = p.routineH - [0, 0.4, 0.8][Math.abs(p.pos || 0)];   // 技に入ったら固定。センターを外した所から跳ぶと低くなる（少しズレ−0.4m／大きなズレ−0.8m、センターに戻ればMAX）
+    if (p.routineH != null) { h = p.routineH - [0, 0.4, 0.8][Math.abs(p.pos || 0)]; if (p.rebuild) { h -= 1.2; p.rebuild = 0; } }   // 技に入ったら固定。センターを外した所から跳ぶと低くなる（少しズレ−0.4m／大きなズレ−0.8m、センターに戻ればMAX）
     else if (p.bounceN > 1) {                 // 予備ジャンプ：踏み込むたびに高くなる
       const kt = p.kickT; let inc;
       if (kt == null) { inc = -0.8; pop(L('踏み込みなし', 'NO KICK'), '#9fb6cc', 0.75, -1.2); }
@@ -771,8 +772,8 @@ function openBody() {
   if (phi < Math.PI / 2) return;            // ほとんど回っていない軽いタップは開き扱いにしない
   const m = phi % TAU;                      // 今の宙返りの中での位置（π＝足が真上＝12時）
   // 判定は「体が伸び切って、つま先が指した角度」。伸び切るまでも回り続けるので、
-  // タック（60°）・パイク（35°）は離した瞬間より先の角度で判定＝早めに離す必要がある。レイアウトはそのまま
-  const shp = (p.plan && p.plan.s) || p.shape || 'L', lead = {T: 60, P: 35}[shp] || 0;
+  // タック（90°）・パイク（55°）は離した瞬間より先の角度で判定＝早めに離す必要がある。レイアウトはそのまま
+  const shp = (p.plan && p.plan.s) || p.shape || 'L', lead = {T: 90, P: 55}[shp] || 0;
   const eDeg = (m - Math.PI) * 180 / Math.PI + lead;
   p.openRate = lead ? 3 / Math.max(0.03, lead * Math.PI / 180 / Math.max(1, Math.abs(p.w))) : 60;   // 伸び切るまでの速さ
   const nEnd = Math.floor(phi / TAU) + 1;   // この宙返りを回り切る
@@ -812,6 +813,12 @@ function airUpdate(dt) {
     p.w += (p.dir * TW - p.w) * (1 - Math.exp(-dt * 9));
     p.tuck += (1 - p.tuck) * (1 - Math.exp(-dt * 14));
     p.wasHolding = true;
+    // 10本目だけの隠し技：遅くかけて（2回宙の予定で）3回目まで回すと、伸身3回宙の新技になる
+    if (el.length === 9 && p.plan && !p.plan.normal && p.plan.n === 2 && !p.plan.ten && p.th * p.dir > 1.6 * TAU) {
+      p.plan = {n: 3, h: p.dir > 0 ? [2, 2, 1] : [2, 2, 2], s: 'L', name: p.dir > 0 ? 'フル・フル・バラニー' : 'フル・フル・フル', ten: true};
+      p.shape = 'L';
+      pop(L('隠し技！', 'SECRET SKILL!'), '#ffd23f', 0.9, 2.2);
+    }
   } else {
     if (p.wasHolding && p.dir && st === 'play') openBody();   // 指を離した＝開き
     p.wasHolding = false;
@@ -1419,7 +1426,7 @@ function drawOverlay() {
     installBtn = null;
     if (canInstall()) drawInstallPill(W / 2, 14);   // ホーム画面に追加（タイトルでは上の空いた所に）
   }
-  txt('v1.7', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
+  txt('v1.7.3', W - 14, H - 18, 11, 'rgba(255,255,255,.8)', 'right');
 }
 function draw() {
   drawBackground();
